@@ -1,0 +1,132 @@
+package com.github.secp192k1
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.graphics.Bitmap
+import android.os.Build
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.ServiceWorkerClient
+import android.webkit.ServiceWorkerController
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.aliucord.Logger
+import com.aliucord.Utils
+import com.google.android.material.bottomsheet.BottomSheetDialog
+
+@SuppressLint("StaticFieldLeak")
+internal object EmbeddedActivityHost {
+    private val logger = Logger("ActivitiesV2")
+
+    private var dialog: BottomSheetDialog? = null
+    private var webView: WebView? = null
+    private var session: ActivitySession? = null
+    var onLeave: ((ActivitySession) -> Unit)? = null
+
+    fun preload(ctx: Context) {
+        Utils.mainThread.post {
+            try {
+                WebView(ctx.applicationContext).destroy()
+            } catch (e: Throwable) {
+                logger.error("Failed to preload WebView", e)
+            }
+        }
+    }
+
+    fun open(activity: Activity, appId: String, inst: String, rawInst: String, launch: String, chan: String, guild: String?, loc: String): Boolean {
+        dialog?.dismiss()
+
+        if (activity.isFinishing || activity.isDestroyed) {
+            logger.error("Host activity not running, aborting launch", null)
+            return false
+        }
+
+        val session = ActivitySession(appId, inst, rawInst, launch, chan, guild, loc)
+        this.session = session
+
+        val web = createWebView(activity, session)
+        webView = web
+
+        val d = ActivityUi.buildDialog(activity, web) { onClosed() }
+        dialog = d
+        web.loadUrl(ActivityApi.buildUrl(session))
+        return try {
+            d.show()
+            true
+        } catch (e: WindowManager.BadTokenException) {
+            logger.error("Invalid activity window", e)
+            onClosed()
+            false
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+    private fun createWebView(activity: Activity, session: ActivitySession): WebView {
+        val web = WebView(activity)
+        web.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            allowContentAccess = true
+        }
+        WebView.setWebContentsDebuggingEnabled(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            ServiceWorkerController.getInstance().setServiceWorkerClient(object : ServiceWorkerClient() {
+                override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+                    logger.verbose("WORKER[${request.method}] ${request.url}")
+                    return null
+                }
+            })
+        }
+        web.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                view.evaluateJavascript(ActivityPayload.PAYLOAD, null)
+            }
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                logger.verbose("HTTP[${request.method}] ${request.url}")
+                return null
+            }
+        }
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) = request.grant(request.resources)
+            override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
+                logger.verbose("[activity] ${msg.message()}")
+                return true
+            }
+        }
+        val rpc = ActivityRpc(session) { js -> web.post { web.evaluateJavascript(js, null) } }
+        web.addJavascriptInterface(object {
+            @JavascriptInterface
+            @Suppress("unused")
+            fun send(json: String) {
+                try {
+                    rpc.handle(json)
+                } catch (e: Throwable) {
+                    logger.error("Failed to handle RPC frame", e)
+                }
+            }
+        }, "AliucordRPC")
+        return web
+    }
+
+    private fun onClosed() {
+        val web = webView
+        val current = session
+        webView = null
+        dialog = null
+        session = null
+        (web?.parent as? ViewGroup)?.removeView(web)
+        web?.destroy()
+        current?.let {
+            ActivityApi.leave(it)
+            onLeave?.invoke(it)
+        }
+    }
+}
