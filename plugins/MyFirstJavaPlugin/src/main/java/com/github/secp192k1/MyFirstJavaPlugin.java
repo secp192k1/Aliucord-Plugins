@@ -1,4 +1,4 @@
-package com.github.yournamehere;
+package com.github.secp192k1;
 
 import android.content.Context;
 
