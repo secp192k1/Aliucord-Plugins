@@ -1,10 +1,16 @@
-version = "1.0.0"
+version = "1.1.0"
 description = "Attempts to fix login via QR Code"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.1.0
+        * Fixed "Cant find this computer" when switching between apps during 2FA code input
+        * Added password login for accounts without 2FA
+        * Recover the login if the screen reloads while the request is still valid
+        * Code cleanup
+
         # 1.0.0
         * Initial plugin release!
         """.trimIndent(),
