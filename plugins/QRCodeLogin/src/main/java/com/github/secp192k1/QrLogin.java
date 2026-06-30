@@ -105,7 +105,8 @@ final class QrLogin {
                 Utils.threadPool.submit(() -> confirmLogin(host, token));
             })
             .setNegativeButton("Cancel", (d, w) -> { recovering = false; cancelFlow(); })
-            .show());
+            .show();
+        });
     }
 
     private static void startMfa(AppFragment host, String token, JSONObject mfa) {
