@@ -1,5 +1,5 @@
 version = "1.0.0"
-description = "Brings activities back!"
+description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
