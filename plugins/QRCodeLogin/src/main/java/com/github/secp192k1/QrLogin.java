@@ -94,7 +94,9 @@ final class QrLogin {
     }
 
     private static void promptRecover(AppFragment host, String token) {
-        Utils.mainThread.post(() -> new AlertDialog.Builder(host.requireActivity())
+        Utils.mainThread.post(() -> {
+            if (!host.isAdded()) return;
+            new AlertDialog.Builder(host.requireActivity())
             .setTitle("Resume login?")
             .setMessage("The login screen reloaded. Approve the pending login?")
             .setCancelable(false)
