@@ -25,7 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 final class QrLogin {
-    private static final int TIMEOUT = 15000;
+    private static final int TIMEOUT = 15_000;
     private static final String LOGIN_BUTTON = "remote_auth_login_button";
     private static final String EXPIRED_MESSAGE = "Handshake expired\nDid you switch apps?\n\nRestart the process, make sure to authorize before switching from Aliucord.";
 
@@ -34,7 +34,7 @@ final class QrLogin {
     private static final int FINISH_FAIL = 2;
 
     private static final Logger logger = new Logger("QRCodeLogin");
-    private static final long HANDSHAKE_TTL = 120000;
+    private static final long HANDSHAKE_TTL = 120_000;
 
     private static volatile String handshakeToken;
     private static volatile String mfaTicket;
@@ -122,9 +122,11 @@ final class QrLogin {
                 if (type.isEmpty()) continue;
                 if (available.length() > 0) available.append(", ");
                 available.append(type);
-                if (type.equals("totp")) hasTotp = true;
-                else if (type.equals("backup")) hasBackup = true;
-                else if (type.equals("password")) hasPassword = true;
+                switch (type) {
+                    case "totp" -> hasTotp = true;
+                    case "backup" -> hasBackup = true;
+                    case "password" -> hasPassword = true;
+                }
             }
         }
         if (!hasTotp && !hasBackup && !hasPassword) {
@@ -270,6 +272,7 @@ final class QrLogin {
 
     private static String post(String route, String body, String mfaToken) {
         Http.Request req = null;
+        //noinspection TryFinallyCanBeTryWithResources
         try {
             req = Http.Request.newDiscordRequest(route, "POST");
             req.setHeader("Content-Type", "application/json");

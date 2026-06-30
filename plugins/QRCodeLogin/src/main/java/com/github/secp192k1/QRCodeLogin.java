@@ -3,6 +3,7 @@ package com.github.secp192k1;
 import android.content.Context;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.fragment.app.FragmentManager;
 
 import com.aliucord.Utils;
@@ -43,7 +44,7 @@ public class QRCodeLogin extends Plugin {
     }
 
     @Override
-    public void start(Context context) throws Throwable {
+    public void start(@NonNull Context context) throws Throwable {
         // The native QR scanner already launches WidgetRemoteAuth for ra codes. Route its "Login"
         // button through our finish
         // Also hook the login button so we can catch error 60003 and warn the user when the
@@ -55,7 +56,7 @@ public class QRCodeLogin extends Plugin {
     }
 
     @Override
-    public void stop(Context context) {
+    public void stop(@NonNull Context context) {
         patcher.unpatchAll();
     }
 }
