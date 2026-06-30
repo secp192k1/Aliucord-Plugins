@@ -1,12 +1,13 @@
 package com.github.secp192k1;
 
 import android.annotation.SuppressLint;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.View;
 import android.widget.EditText;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
 
 import com.aliucord.Http;
 import com.aliucord.Logger;
@@ -26,7 +27,6 @@ import java.io.InputStream;
 final class QrLogin {
     private static final int TIMEOUT = 15000;
     private static final String LOGIN_BUTTON = "remote_auth_login_button";
-    private static final String MFA_TAG = "qr_mfa";
     private static final String EXPIRED_MESSAGE = "Handshake expired\nDid you switch apps?\n\nRestart the process, make sure to authorize before switching from Aliucord.";
 
     private static final int FINISH_SUCCESS = 0;
@@ -34,6 +34,7 @@ final class QrLogin {
     private static final int FINISH_FAIL = 2;
 
     private static final Logger logger = new Logger("QRCodeLogin");
+    private static final long HANDSHAKE_TTL = 120000;
 
     private static volatile String handshakeToken;
     private static volatile String mfaTicket;
@@ -41,6 +42,9 @@ final class QrLogin {
     private static volatile boolean mfaNumeric;
     private static volatile JSONObject pendingMfa;
     private static volatile String pendingError;
+    private static volatile String pendingHandshake;
+    private static volatile long handshakeTime;
+    private static volatile boolean recovering;
 
     private QrLogin() {}
 
@@ -48,13 +52,23 @@ final class QrLogin {
         if (viewState instanceof WidgetRemoteAuthViewModel.ViewState.Loaded loaded) {
             if (loaded.getLoginAllowed()) bindLogin(host, loaded.getHandshakeToken());
         } else if (viewState instanceof WidgetRemoteAuthViewModel.ViewState.Failed) {
-            // Ignore the spurious Failed the native screen emits when it re-inits on resume
-            // while we're already mid-MFA (we complete via the stored handshake token)
-            if (mfaTicket == null) logger.errorToast(EXPIRED_MESSAGE);
+            // Native reinit on resume 404 and ignore mid-MFA, otherwise the
+            // first handshake may still be valid, so offer to finish with it before throwing
+            /// the cant find pc error
+            if (mfaTicket != null || recovering) return;
+            String token = pendingHandshake;
+            if (token != null && SystemClock.elapsedRealtime() - handshakeTime <= HANDSHAKE_TTL) {
+                recovering = true;
+                promptRecover(host, token);
+            } else {
+                logger.errorToast(EXPIRED_MESSAGE);
+            }
         }
     }
 
     private static void bindLogin(AppFragment host, String token) {
+        pendingHandshake = token;
+        handshakeTime = SystemClock.elapsedRealtime();
         MaterialButton button = findButton(host);
         if (button == null) return;
         button.setEnabled(true);
@@ -79,12 +93,26 @@ final class QrLogin {
         }
     }
 
+    private static void promptRecover(AppFragment host, String token) {
+        Utils.mainThread.post(() -> new AlertDialog.Builder(host.requireActivity())
+            .setTitle("Resume login?")
+            .setMessage("The login screen reloaded. Approve the pending login?")
+            .setCancelable(false)
+            .setPositiveButton("Approve", (d, w) -> {
+                recovering = false;
+                Utils.threadPool.submit(() -> confirmLogin(host, token));
+            })
+            .setNegativeButton("Cancel", (d, w) -> { recovering = false; cancelFlow(); })
+            .show());
+    }
+
     private static void startMfa(AppFragment host, String token, JSONObject mfa) {
         String ticket = mfa != null ? mfa.optString("ticket") : "";
         if (ticket.isEmpty()) { logger.errorToast("MFA required but no ticket received"); reEnable(host); return; }
 
         boolean hasTotp = false;
         boolean hasBackup = false;
+        boolean hasPassword = false;
         StringBuilder available = new StringBuilder();
         JSONArray methods = mfa.optJSONArray("methods");
         if (methods != null) {
@@ -96,9 +124,10 @@ final class QrLogin {
                 available.append(type);
                 if (type.equals("totp")) hasTotp = true;
                 else if (type.equals("backup")) hasBackup = true;
+                else if (type.equals("password")) hasPassword = true;
             }
         }
-        if (!hasTotp && !hasBackup) {
+        if (!hasTotp && !hasBackup && !hasPassword) {
             logger.errorToast("Unsupported 2FA method: " + available);
             reEnable(host);
             return;
@@ -106,28 +135,32 @@ final class QrLogin {
 
         handshakeToken = token;
         mfaTicket = ticket;
-        mfaType = hasTotp ? "totp" : "backup";
+        mfaType = hasTotp ? "totp" : hasBackup ? "backup" : "password";
         mfaNumeric = hasTotp;
 
         Utils.mainThread.post(() -> {
-            FragmentManager fm = host.requireActivity().getSupportFragmentManager();
-            if (fm.findFragmentByTag(MFA_TAG) == null)
-                new QRCodeLogin.MfaDialog().show(fm, MFA_TAG);
+            Utils.openPageWithProxy(host.requireContext(), new QRCodeLogin.MfaHost());
+            host.requireActivity().finish();
         });
     }
 
     @SuppressLint("SetTextI18n")
     static void bindMfaDialog(InputDialog dialog) {
+        boolean password = "password".equals(mfaType);
         dialog.setCancelable(false);
-        dialog.getHeader().setText("Two-Factor Auth");
-        dialog.getBody().setText(mfaNumeric ? "Enter your 6-digit authentication code" : "Enter a backup code");
-        dialog.getInputLayout().setHint(mfaNumeric ? "Authentication code" : "Backup code");
+        dialog.getHeader().setText(password ? "Password Required" : "Two-Factor Auth");
+        dialog.getBody().setText(password ? "Enter your password" : mfaNumeric ? "Enter your 6-digit authentication code" : "Enter a backup code");
+        dialog.getInputLayout().setHint(password ? "Password" : mfaNumeric ? "Authentication code" : "Backup code");
         EditText input = dialog.getInputLayout().getEditText();
-        if (mfaNumeric && input != null) input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        if (input != null) {
+            if (mfaNumeric) input.setInputType(InputType.TYPE_CLASS_NUMBER);
+            else if (password) input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        }
 
         MaterialButton ok = dialog.getOKButton();
         ok.setOnClickListener(v -> {
-            String code = dialog.getInput().trim();
+            // do NOT trim passwords
+            String code = password ? dialog.getInput() : dialog.getInput().trim();
             if (code.isEmpty()) return;
             ok.setEnabled(false);
             Utils.threadPool.submit(() -> submitMfa(dialog, code));
@@ -218,22 +251,13 @@ final class QrLogin {
         return root == null ? null : root.findViewById(Utils.getResId(QrLogin.LOGIN_BUTTON, "id"));
     }
 
-    // TODO: When switching apps, the screen gets re-created on resume,
-    //  which shows you an 404 error "Cant find this computer!"
-    /*
-    static void onRemoteAuthInit(XC_MethodHook.MethodHookParam param) {
-        String fingerprint = (String) param.args[0];
-
-        if (fingerprint != null && fingerprint.equals(activeFingerprint)) param.args[0] = "";
-        else activeFingerprint = fingerprint;
-    } */
-
     private static void clearState() {
         handshakeToken = null;
         mfaTicket = null;
         mfaType = null;
         pendingMfa = null;
-        //activeFingerprint = null;
+        pendingHandshake = null;
+        recovering = false;
     }
 
     private static String parseHandshake(String value) {
