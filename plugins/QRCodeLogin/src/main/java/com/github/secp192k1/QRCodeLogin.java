@@ -1,19 +1,24 @@
 package com.github.secp192k1;
 
 import android.content.Context;
+import android.os.Bundle;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.FragmentManager;
 
-import com.aliucord.Utils;
 import com.aliucord.annotations.AliucordPlugin;
 import com.aliucord.entities.Plugin;
 import com.aliucord.fragments.InputDialog;
 import com.aliucord.patcher.Hook;
 import com.discord.app.AppFragment;
+import com.discord.utilities.color.ColorCompat;
 import com.discord.widgets.auth.WidgetRemoteAuth;
 import com.discord.widgets.auth.WidgetRemoteAuthViewModel;
+
+import com.lytefast.flexinput.R;
 
 @AliucordPlugin
 public class QRCodeLogin extends Plugin {
@@ -29,10 +34,15 @@ public class QRCodeLogin extends Plugin {
     }
 
     // Standalone host for the MFA prompt so it survives the user switching apps,
-    // WidgetRemoteAuth gives us 404 "Cant find this computer" on resume
+    // WidgetRemoteAuth gives us 404 "Cant find this computer" on resume. Blank view so the
+    // dialog sits over the activity's dark backdrop, not a borrowed settings layout
     public static class MfaHost extends AppFragment {
-        public MfaHost() {
-            super(Utils.getResId("widget_settings_behavior", "layout"));
+        @Override
+        public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+            Context ctx = requireContext();
+            View view = new View(ctx);
+            view.setBackgroundColor(ColorCompat.getThemedColor(ctx, R.b.colorBackgroundPrimary));
+            return view;
         }
 
         @Override
