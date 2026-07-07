@@ -17,6 +17,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.LinearLayout
 import com.aliucord.Logger
 import com.aliucord.Utils
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -26,6 +27,7 @@ internal object EmbeddedActivityHost {
     private val logger = Logger("ActivitiesV2")
 
     private var dialog: BottomSheetDialog? = null
+    private var participantsRow: LinearLayout? = null
     private var webView: WebView? = null
     private var session: ActivitySession? = null
     var onLeave: ((ActivitySession) -> Unit)? = null
@@ -54,8 +56,10 @@ internal object EmbeddedActivityHost {
         val web = createWebView(activity, session)
         webView = web
 
-        val d = ActivityUi.buildDialog(activity, web) { onClosed() }
+        val built = ActivityUi.buildDialog(activity, web) { onClosed() }
+        val d = built.dialog
         dialog = d
+        participantsRow = built.participantsRow
         web.loadUrl(ActivityApi.buildUrl(session))
         return try {
             d.show()
@@ -116,11 +120,21 @@ internal object EmbeddedActivityHost {
         return web
     }
 
+    fun updateParticipants(instanceId: String, userIds: List<Long>) {
+        if (session?.rawInstanceId != instanceId) return
+
+        Utils.mainThread.post {
+            val row = participantsRow ?: return@post
+            ActivityUi.updateParticipants(row, userIds)
+        }
+    }
+
     private fun onClosed() {
         val web = webView
         val current = session
         webView = null
         dialog = null
+        participantsRow = null
         session = null
         (web?.parent as? ViewGroup)?.removeView(web)
         web?.destroy()

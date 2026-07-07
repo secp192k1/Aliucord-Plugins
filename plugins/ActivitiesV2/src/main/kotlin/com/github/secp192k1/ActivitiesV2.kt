@@ -115,6 +115,9 @@ class ActivitiesV2 : Plugin() {
                     ) launched.remove(instanceId)
                 }
             }
+
+            // After the open post so the initial update isn't dropped before the session exists
+            EmbeddedActivityHost.updateParticipants(instanceId, userIds.mapNotNull { it.toLongOrNull() })
         } catch (e: Throwable) {
             logger.error("Failed to handle $V2", e)
         }
