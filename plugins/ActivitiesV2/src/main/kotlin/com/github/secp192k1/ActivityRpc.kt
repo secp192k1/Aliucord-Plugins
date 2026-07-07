@@ -14,8 +14,9 @@ internal class ActivityRpc(
 
     fun handle(json: String) {
         val tuple = JSONArray(json)
-        when (tuple.optInt(0, -1)) {
-            HANDSHAKE -> {
+
+        when (RpcOpcode.from(tuple.optInt(0, -1))) {
+            RpcOpcode.HANDSHAKE -> {
                 clientId = tuple.optJSONObject(1)?.optString("client_id").orEmpty()
                 frame(
                     JSONObject().put("cmd", "DISPATCH").put("evt", "READY").put("nonce", JSONObject.NULL)
@@ -25,27 +26,34 @@ internal class ActivityRpc(
                             .put("environment", "production")))
                 )
             }
-            FRAME -> {
+            RpcOpcode.FRAME -> {
                 val payload = tuple.optJSONObject(1) ?: return
                 val command = payload.optString("cmd")
                 val nonce = payload.opt("nonce")
                 val event = payload.optString("evt").ifEmpty { null }
                 val args = payload.optJSONObject("args") ?: JSONObject()
-                when (command) {
-                    "AUTHORIZE" -> Utils.threadPool.execute { onResult("AUTHORIZE", nonce, ActivityApi.authorize(session, clientId, args)) }
-                    "AUTHENTICATE" -> Utils.threadPool.execute { onResult("AUTHENTICATE", nonce, ActivityApi.authenticate(args.optString("access_token"))) }
-                    "GET_CHANNEL" -> reply(command, nonce, ActivityData.channel(session))
-                    "GET_CHANNEL_PERMISSIONS" -> reply(command, nonce, ActivityData.permissions(session))
-                    "ENCOURAGE_HW_ACCELERATION" -> reply(command, nonce, JSONObject().put("enabled", true))
-                    "SUBSCRIBE", "UNSUBSCRIBE" -> reply(command, nonce, JSONObject().put("evt", event))
-                    "CAPTURE_LOG", "SEND_ANALYTICS_EVENT", "SET_ACTIVITY", "GET_PLATFORM_BEHAVIORS" -> reply(command, nonce, JSONObject())
-                    "" -> {}
-                    else -> {
+                if (command.isEmpty()) return
+                when (RpcCommand.from(command)) {
+                    RpcCommand.AUTHORIZE -> Utils.threadPool.execute { onResult(command, nonce, ActivityApi.authorize(session, clientId, args)) }
+                    RpcCommand.AUTHENTICATE -> Utils.threadPool.execute { onResult(command, nonce, ActivityApi.authenticate(args.optString("access_token"))) }
+                    RpcCommand.GET_CHANNEL -> reply(command, nonce, ActivityData.channel(session))
+                    RpcCommand.GET_CHANNEL_PERMISSIONS -> reply(command, nonce, ActivityData.permissions(session))
+                    RpcCommand.ENCOURAGE_HW_ACCELERATION -> reply(command, nonce, JSONObject().put("enabled", true))
+                    RpcCommand.SUBSCRIBE, RpcCommand.UNSUBSCRIBE -> reply(command, nonce, JSONObject().put("evt", event))
+                    RpcCommand.SET_ACTIVITY -> {
+                        val activity = args.optJSONObject("activity") ?: JSONObject()
+                        if (!activity.has("name")) activity.put("name", "")
+                        if (!activity.has("type")) activity.put("type", ActivityType.PLAYING.value)
+                        reply(command, nonce, activity)
+                    }
+                    RpcCommand.CAPTURE_LOG, RpcCommand.SEND_ANALYTICS_EVENT, RpcCommand.GET_PLATFORM_BEHAVIORS -> reply(command, nonce, JSONObject())
+                    null -> {
                         logger.warn("Unhandled RPC command: $command args=$args")
                         reply(command, nonce, JSONObject())
                     }
                 }
             }
+            null -> logger.warn("Unknown RPC opcode: ${tuple.optInt(0, -1)}")
         }
     }
 
@@ -56,7 +64,7 @@ internal class ActivityRpc(
 
     private fun deliver(tuple: JSONArray) = post("window.__hostDeliver(${JSONObject.quote(tuple.toString())})")
 
-    private fun frame(payload: JSONObject) = deliver(JSONArray().put(FRAME).put(payload))
+    private fun frame(payload: JSONObject) = deliver(JSONArray().put(RpcOpcode.FRAME.value).put(payload))
 
     private fun reply(cmd: String, nonce: Any?, data: JSONObject) =
         frame(JSONObject().put("cmd", cmd).put("evt", JSONObject.NULL).put("nonce", nonce ?: JSONObject.NULL).put("data", data))
@@ -64,9 +72,4 @@ internal class ActivityRpc(
     private fun replyError(cmd: String, nonce: Any?, code: Int, message: String) =
         frame(JSONObject().put("cmd", cmd).put("evt", "ERROR").put("nonce", nonce ?: JSONObject.NULL)
             .put("data", JSONObject().put("code", code).put("message", message)))
-
-    companion object {
-        private const val HANDSHAKE = 0
-        private const val FRAME = 1
-    }
 }

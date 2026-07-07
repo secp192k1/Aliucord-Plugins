@@ -9,7 +9,7 @@ internal object ActivityData {
     fun channel(session: ActivitySession): JSONObject {
         val json = JSONObject()
             .put("id", session.channelId)
-            .put("type", 0)
+            .put("type", ChannelType.GUILD_TEXT.value)
             .put("name", JSONObject.NULL)
             .put("voice_states", JSONArray())
             .put("messages", JSONArray())

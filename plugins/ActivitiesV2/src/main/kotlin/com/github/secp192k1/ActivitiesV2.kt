@@ -28,10 +28,22 @@ class ActivitiesV2 : Plugin() {
     private companion object {
         const val V1 = "EMBEDDED_ACTIVITY_UPDATE"
         const val V2 = "EMBEDDED_ACTIVITY_UPDATE_V2"
+
+        // V2 is handled by this plugin
+        // this is to avoid the "is unhandled!" spam
+        val SILENCED_EVENTS = setOf(
+            V2,
+            "OAUTH2_TOKEN_CREATE",
+            "OAUTH2_TOKEN_DELETE",
+            "OAUTH2_TOKEN_REVOKE",
+            "USER_APPLICATION_UPDATE",
+        )
     }
 
     override fun start(context: Context) {
         EmbeddedActivityHost.preload(context)
+        ActivityPicker.patch(patcher)
+        ActivityApi.trackInteractionEvents()
         EmbeddedActivityHost.onLeave = { session ->
             launched.remove(session.rawInstanceId)
             dispatchLeave(session)
@@ -44,7 +56,7 @@ class ActivitiesV2 : Plugin() {
             Int::class.javaPrimitiveType!!,
             Long::class.javaPrimitiveType!!,
         ) { (param, _: Any?, event: String) ->
-            if (event == V2) param.result = null
+            if (event in SILENCED_EVENTS) param.result = null
         }
 
         GatewayAPI.onRawEvent(V2) { raw ->
