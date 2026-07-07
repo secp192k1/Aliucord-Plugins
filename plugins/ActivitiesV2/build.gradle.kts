@@ -1,10 +1,13 @@
-version = "1.1.0"
+version = "1.1.1"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.1.1
+        * Show participant avatars in activity header
+
         # 1.1.0
         * Added an activity picker to the chat attachments bar, showing a grid of the server's apps and the activity shelf
         * Activities in voice chat are now supported
