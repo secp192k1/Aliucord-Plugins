@@ -46,7 +46,8 @@ internal class ActivityRpc(
                         if (!activity.has("type")) activity.put("type", ActivityType.PLAYING.value)
                         reply(command, nonce, activity)
                     }
-                    RpcCommand.CAPTURE_LOG, RpcCommand.SEND_ANALYTICS_EVENT, RpcCommand.GET_PLATFORM_BEHAVIORS -> reply(command, nonce, JSONObject())
+                    RpcCommand.CAPTURE_LOG, RpcCommand.SEND_ANALYTICS_EVENT, RpcCommand.GET_PLATFORM_BEHAVIORS,
+                    RpcCommand.SET_ORIENTATION_LOCK_STATE -> reply(command, nonce, JSONObject())
                     null -> {
                         logger.warn("Unhandled RPC command: $command args=$args")
                         reply(command, nonce, JSONObject())

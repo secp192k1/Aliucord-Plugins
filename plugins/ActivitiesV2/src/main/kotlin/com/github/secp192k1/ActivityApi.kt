@@ -24,6 +24,7 @@ internal object ActivityApi {
     private val logger = Logger("ActivitiesV2")
     private val entryPointCommands = ConcurrentHashMap<String, JSONObject>()
     private val pendingLaunches = ConcurrentHashMap<String, String>()
+    private val appNames = ConcurrentHashMap<String, String>()
 
     fun trackInteractionEvents() {
         GatewayAPI.onRawEvent("INTERACTION_SUCCESS") { raw ->
@@ -36,6 +37,27 @@ internal object ActivityApi {
             val code = data.optInt("reason_code")
             logger.error("Launch of $name failed: reason_code=$code", null)
             Utils.showToast("$name: ${InteractionFailureReason.messageFor(code)}")
+        }
+    }
+
+    fun fetchAppName(applicationId: String): String? {
+        appNames[applicationId]?.let { return it }
+
+        return try {
+            val res = Http.Request.newDiscordRNRequest("/applications/public?application_ids=$applicationId", "GET").execute()
+            if (!res.ok()) {
+                logger.error("applications/public failed: ${res.statusCode} ${res.statusMessage}", null)
+                return null
+            }
+
+            val name = JSONArray(res.text()).optJSONObject(0)?.optString("name")
+            if (name.isNullOrEmpty()) return null
+
+            appNames[applicationId] = name
+            name
+        } catch (e: Throwable) {
+            logger.error("Failed to fetch application name for $applicationId", e)
+            null
         }
     }
 
@@ -113,12 +135,19 @@ internal object ActivityApi {
         }
     }
 
-    fun launch(channelId: Long, guildId: Long, applicationId: String, applicationName: String, onError: () -> Unit) {
+    fun launch(
+        channelId: Long,
+        guildId: Long,
+        applicationId: String,
+        applicationName: String,
+        voice: Boolean = false,
+        onError: () -> Unit
+    ) {
         Utils.threadPool.execute {
             val nonce = Utils.generateRNNonce().toString()
             try {
                 val sessionId = ReflectUtils.getField(StoreStream.getInteractions(), "sessionId") as? String
-                val command = fetchEntryPointCommand(applicationId)
+                val command = if (voice) null else fetchEntryPointCommand(applicationId)
                 val request: Http.Request
                 val body: JSONObject
 

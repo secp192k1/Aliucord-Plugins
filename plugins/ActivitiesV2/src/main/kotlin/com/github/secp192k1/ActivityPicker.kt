@@ -7,6 +7,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.GridLayout
@@ -28,6 +29,10 @@ import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.discord.stores.StoreStream
 import com.discord.utilities.color.ColorCompat
 import com.discord.widgets.chat.input.WidgetChatInputAttachments
+import com.discord.widgets.voice.fullscreen.CallParticipant
+import com.discord.widgets.voice.fullscreen.WidgetCallFullscreen
+import com.discord.widgets.voice.fullscreen.WidgetCallFullscreenViewModel
+import com.discord.widgets.voice.fullscreen.grid.VideoCallGridViewHolder
 import com.discord.widgets.chat.input.`WidgetChatInputAttachments$configureFlexInputContentPages$1`
 import com.discord.widgets.chat.input.`WidgetChatInputAttachments$configureFlexInputContentPages$1$page$1`
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -118,6 +123,54 @@ internal object ActivityPicker {
             parentFragment.s.onContentDialogDismissed(false)
             param.result = null
             openPicker()
+        }
+
+        patcher.before<WidgetCallFullscreen>(
+            "handleEvent",
+            WidgetCallFullscreenViewModel.Event::class.java
+        ) { (param, event: WidgetCallFullscreenViewModel.Event) ->
+            if (event !is WidgetCallFullscreenViewModel.Event.ShowActivitiesDesktopOnlyDialog) return@before
+            param.result = null
+            joinVoiceActivity()
+        }
+
+        // the subtext saying "Coming soon to mobile"
+        patcher.after<VideoCallGridViewHolder.EmbeddedActivity>(
+            "configure",
+            CallParticipant.EmbeddedActivityParticipant::class.java,
+            Function1::class.java
+        ) { _ ->
+            replaceComingSoonText(binding.a)
+        }
+    }
+
+    private fun replaceComingSoonText(root: ViewGroup) {
+        val comingSoon = root.context.getString(R.h.embedded_activities_in_video_call_mobile_preview_subtitle_short)
+        val comingSoonAlt = root.context.getString(R.h.discord_u_coming_soon_to_mobile)
+        for (i in 0 until root.childCount) {
+            when (val child = root.getChildAt(i)) {
+                is TextView -> if (child.text == comingSoon || child.text == comingSoonAlt) child.text = "Tap to join"
+                is ViewGroup -> replaceComingSoonText(child)
+            }
+        }
+    }
+
+    private fun joinVoiceActivity() {
+        val channelId = StoreStream.getVoiceChannelSelected().selectedVoiceChannelId
+        if (channelId <= 0L) return
+
+        val stores = StoreStream.`access$getCollector$cp`().value as StoreStream
+        val activity = stores.`getEmbeddedActivities$app_productionGoogleRelease`()
+            .embeddedActivities[channelId]?.values?.firstOrNull()
+
+        if (activity == null) {
+            Utils.showToast("No activity running in this channel")
+            return
+        }
+
+        val name = activity.name ?: "Activity"
+        ActivityApi.launch(channelId, activity.guildId, activity.applicationId.toString(), name, voice = true) {
+            Utils.showToast("Failed to join $name")
         }
     }
 

@@ -59,56 +59,64 @@ class ActivitiesV2 : Plugin() {
             if (event in SILENCED_EVENTS) param.result = null
         }
 
-        GatewayAPI.onRawEvent(V2) { raw ->
-            try {
-                val instance = JSONObject(raw).optJSONObject("d") ?: return@onRawEvent
-                val location = instance.optJSONObject("location") ?: return@onRawEvent
-                val channelId = location.optString("channel_id")
-                val applicationId = instance.optString("application_id")
-                if (channelId.isEmpty() || applicationId.isEmpty()) return@onRawEvent
+        GatewayAPI.onRawEvent(V2) { raw -> Utils.threadPool.execute { handleV2Update(raw) } }
+    }
 
-                val userIds = mutableListOf<String>()
-                instance.optJSONArray("participants")?.let { participants ->
-                    for (i in 0 until participants.length()) {
-                        val userId = participants.getJSONObject(i).optString("user_id")
-                        if (userId.isNotEmpty()) userIds.add(userId)
-                    }
+    private fun handleV2Update(raw: String) {
+        try {
+            val instance = JSONObject(raw).optJSONObject("d") ?: return
+            val location = instance.optJSONObject("location") ?: return
+            val channelId = location.optString("channel_id")
+            val applicationId = instance.optString("application_id")
+            if (channelId.isEmpty() || applicationId.isEmpty()) return
+
+            val userIds = mutableListOf<String>()
+            instance.optJSONArray("participants")?.let { participants ->
+                for (i in 0 until participants.length()) {
+                    val userId = participants.getJSONObject(i).optString("user_id")
+                    if (userId.isNotEmpty()) userIds.add(userId)
                 }
-
-                val users = JSONArray()
-                userIds.forEach { users.put(it) }
-
-                val v1 = JSONObject()
-                    .put("channel_id", channelId)
-                    .put("users", users)
-                    .put("embedded_activity", JSONObject().put("application_id", applicationId))
-                if (location.has("guild_id") && !location.isNull("guild_id"))
-                    v1.put("guild_id", location.optString("guild_id"))
-
-                val update = InboundGatewayGsonParser.INSTANCE.gatewayGsonInstance
-                    .fromJson(v1.toString(), EmbeddedActivityInboundUpdate::class.java)
-                StoreStream.getGatewaySocket().handleDispatch(V1, update)
-
-                val instanceId = instance.optString("instance_id")
-                if (userIds.contains(StoreStream.getUsers().me.id.toString()) && launched.add(instanceId)) {
-                    val compositeInstanceId = instance.optString("composite_instance_id").ifEmpty { instanceId }
-                    val launchId = instance.optString("launch_id")
-                    val guildId = if (location.has("guild_id") && !location.isNull("guild_id")) location.optString("guild_id") else null
-                    val locationId = location.optString("id")
-                    Utils.mainThread.post {
-                        if (!EmbeddedActivityHost.open(
-                                Utils.appActivity,
-                                applicationId,
-                                compositeInstanceId,
-                                instanceId, launchId,
-                                channelId, guildId,
-                                locationId
-                        )) launched.remove(instanceId)
-                    }
-                }
-            } catch (e: Throwable) {
-                logger.error("Failed to handle $V2", e)
             }
+
+            val users = JSONArray()
+            userIds.forEach { users.put(it) }
+
+            val embeddedActivity = JSONObject()
+                .put("application_id", applicationId)
+                .put("name", ActivityApi.fetchAppName(applicationId) ?: "Unknown Activity")
+
+            val v1 = JSONObject()
+                .put("channel_id", channelId)
+                .put("users", users)
+                .put("embedded_activity", embeddedActivity)
+            if (location.has("guild_id") && !location.isNull("guild_id"))
+                v1.put("guild_id", location.optString("guild_id"))
+
+            val update = InboundGatewayGsonParser.INSTANCE.gatewayGsonInstance
+                .fromJson(v1.toString(), EmbeddedActivityInboundUpdate::class.java)
+            StoreStream.getGatewaySocket().handleDispatch(V1, update)
+
+            val instanceId = instance.optString("instance_id")
+            if (userIds.contains(StoreStream.getUsers().me.id.toString()) && launched.add(instanceId)) {
+                val compositeInstanceId = instance.optString("composite_instance_id").ifEmpty { instanceId }
+                val launchId = instance.optString("launch_id")
+                val guildId =
+                    if (location.has("guild_id") && !location.isNull("guild_id")) location.optString("guild_id") else null
+                val locationId = location.optString("id")
+                Utils.mainThread.post {
+                    if (!EmbeddedActivityHost.open(
+                            Utils.appActivity,
+                            applicationId,
+                            compositeInstanceId,
+                            instanceId, launchId,
+                            channelId, guildId,
+                            locationId,
+                        )
+                    ) launched.remove(instanceId)
+                }
+            }
+        } catch (e: Throwable) {
+            logger.error("Failed to handle $V2", e)
         }
     }
 
