@@ -1,10 +1,18 @@
-version = "1.0.0"
+version = "1.1.0"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.1.0
+        * Added an activity picker to the chat attachments bar, showing a grid of the server's apps and the activity shelf
+        * Activities in voice chat are now supported
+        * Launch failures now show the exact reason (age restriction, missing permission, etc)
+        * Fixed activities failing to authenticate after launch
+        * Silenced some gateway logs (spams...)
+        * Code refactor and cleanup
+
         # 1.0.0
         * Initial plugin release!
         """.trimIndent(),
