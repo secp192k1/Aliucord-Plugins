@@ -197,18 +197,20 @@ internal object EmbeddedActivityHost {
     }
 
     private fun handlePermissionRequest(request: PermissionRequest) {
-        if (!Config.promptForPermissions) {
-            request.grant(request.resources)
+        val resources = request.resources
+
+        if (!Config.promptForPermissions || resources.isEmpty()) {
+            request.grant(resources)
             return
         }
 
-        val activity = hostActivity()
-        if (activity == null) {
+        val activity = hostRef.get() ?: hostActivity()
+        if (activity == null || activity.isDestroyed) {
             request.deny()
             return
         }
 
-        val labels = request.resources.map {
+        val labels = resources.map {
             when (it) {
                 PermissionRequest.RESOURCE_AUDIO_CAPTURE -> "microphone"
                 PermissionRequest.RESOURCE_VIDEO_CAPTURE -> "camera"
@@ -220,7 +222,7 @@ internal object EmbeddedActivityHost {
             AlertDialog.Builder(activity)
                 .setTitle("Activity permission")
                 .setMessage("This activity wants to use your $labels.")
-                .setPositiveButton("Allow") { _, _ -> request.grant(request.resources) }
+                .setPositiveButton("Allow") { _, _ -> request.grant(resources) }
                 .setNegativeButton("Deny") { _, _ -> request.deny() }
                 .setOnCancelListener { request.deny() }
                 .setCancelable(false)
