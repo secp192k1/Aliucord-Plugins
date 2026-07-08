@@ -1,10 +1,23 @@
-version = "1.1.2"
+version = "1.2.0"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.2.0
+        * Render message cards (type 23) correctly
+        * Multiplayer activities now receive live participant updates (player lists work)
+        * Voice activities can now see who's in the voice channel
+        * Activities now ask before using your microphone or camera
+        * Fixed crash crash or close when the screen is rotated
+        * Fixed switching to another activity while one is already open
+        * Activities that fail to load now show a toast and close instead of a black screen
+        * Fixed activities rejecting channel info due to wrong id format
+        * Unknown RPC commands now return a proper error instead of a fake success
+        * Reduced memory usage (bounded avatar/icon caches)
+        * Added a settings page (permission prompt and WebView debugging)
+
         # 1.1.2
         * Fixed activites not working at all while in a voice chat
         * Fixed authentication (Chess in the Park, Putt Party, etc) which resulted in refusal to load
