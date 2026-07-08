@@ -1,10 +1,16 @@
-version = "1.2.0"
+version = "1.2.1"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.2.1
+        * Faster message processing
+        * Faster loading of the activity picker
+        * Activity updates are now processed in order, no ghost participants
+        * Fewer redundant network requests for unknown applications
+
         # 1.2.0
         * Render message cards (type 23) correctly
         * Multiplayer activities now receive live participant updates (player lists work)
