@@ -1,10 +1,16 @@
-version = "1.1.1"
+version = "1.1.2"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.1.2
+        * Fixed activites not working at all while in a voice chat
+        * Fixed authentication (Chess in the Park, Putt Party, etc) which resulted in refusal to load
+        * Support for activities in more channel types
+        * Code refactor and cleanup
+
         # 1.1.1
         * Show participant avatars in activity header
 
