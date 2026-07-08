@@ -105,7 +105,6 @@ class ActivitiesV2 : Plugin() {
                 val locationId = location.optString("id")
                 Utils.mainThread.post {
                     if (!EmbeddedActivityHost.open(
-                            Utils.appActivity,
                             applicationId,
                             compositeInstanceId,
                             instanceId, launchId,

@@ -2,9 +2,11 @@ package com.github.secp192k1
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.Bundle
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
@@ -21,6 +23,7 @@ import android.widget.LinearLayout
 import com.aliucord.Logger
 import com.aliucord.Utils
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import java.lang.ref.WeakReference
 
 @SuppressLint("StaticFieldLeak")
 internal object EmbeddedActivityHost {
@@ -30,9 +33,24 @@ internal object EmbeddedActivityHost {
     private var participantsRow: LinearLayout? = null
     private var webView: WebView? = null
     private var session: ActivitySession? = null
+    private var currentActivity = WeakReference<Activity>(null)
     var onLeave: ((ActivitySession) -> Unit)? = null
 
     fun preload(ctx: Context) {
+        (ctx.applicationContext as? Application)?.registerActivityLifecycleCallbacks(
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityResumed(activity: Activity) {
+                    currentActivity = WeakReference(activity)
+                }
+                override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+                override fun onActivityStarted(activity: Activity) {}
+                override fun onActivityPaused(activity: Activity) {}
+                override fun onActivityStopped(activity: Activity) {}
+                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+                override fun onActivityDestroyed(activity: Activity) {}
+            }
+        )
+
         Utils.mainThread.post {
             try {
                 WebView(ctx.applicationContext).destroy()
@@ -42,10 +60,18 @@ internal object EmbeddedActivityHost {
         }
     }
 
-    fun open(activity: Activity, appId: String, inst: String, rawInst: String, launch: String, chan: String, guild: String?, loc: String): Boolean {
+    fun hostActivity(): Activity? {
+        val tracked = currentActivity.get()
+        if (tracked != null && !tracked.isFinishing && !tracked.isDestroyed) return tracked
+        val fallback = Utils.appActivity
+        return if (!fallback.isFinishing && !fallback.isDestroyed) fallback else null
+    }
+
+    fun open(appId: String, inst: String, rawInst: String, launch: String, chan: String, guild: String?, loc: String): Boolean {
         dialog?.dismiss()
 
-        if (activity.isFinishing || activity.isDestroyed) {
+        val activity = hostActivity()
+        if (activity == null) {
             logger.error("Host activity not running, aborting launch", null)
             return false
         }

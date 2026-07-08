@@ -1,6 +1,5 @@
 package com.github.secp192k1
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.PorterDuff
@@ -26,6 +25,8 @@ import com.aliucord.patcher.component2
 import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.wrappers.ChannelWrapper.Companion.guildId
 import com.aliucord.wrappers.ChannelWrapper.Companion.id
+import com.aliucord.wrappers.ChannelWrapper.Companion.name
+import com.aliucord.wrappers.ChannelWrapper.Companion.type
 import com.discord.stores.StoreStream
 import com.discord.utilities.color.ColorCompat
 import com.discord.widgets.chat.input.WidgetChatInputAttachments
@@ -176,12 +177,22 @@ internal object ActivityPicker {
 
     private fun openPicker() {
         val channel = StoreStream.getChannelsSelected().selectedChannel
+            ?: StoreStream.getVoiceChannelSelected().selectedVoiceChannel
         val guildId = channel?.guildId ?: 0L
         val channelId = channel?.id ?: 0L
-        if (channelId == 0L) return
+        val voice = channel != null && (
+            channel.type == ChannelType.GUILD_VOICE.value ||
+            channel.type == ChannelType.GUILD_STAGE_VOICE.value
+        )
+        logger.info("Opening picker for channel.name=${channel.name} channel.type=${channel.type}")
+
+        if (channelId == 0L) {
+            Utils.showToast("No channel selected")
+            return
+        }
 
         entriesCache[guildId]?.takeIf { System.currentTimeMillis() - it.fetchedAt < CACHE_TTL_MS }?.let {
-            showGrid(Utils.appActivity, channelId, guildId, it.entries)
+            showGrid(channelId, guildId, voice, it.entries)
             return
         }
 
@@ -194,7 +205,7 @@ internal object ActivityPicker {
                 when {
                     toShow == null -> Utils.showToast("Failed to load activities")
                     toShow.isEmpty() -> Utils.showToast("No activities available")
-                    else -> showGrid(Utils.appActivity, channelId, guildId, toShow)
+                    else -> showGrid(channelId, guildId, voice, toShow)
                 }
             }
         }
@@ -289,8 +300,8 @@ internal object ActivityPicker {
         }
     }
 
-    private fun showGrid(activity: Activity, channelId: Long, guildId: Long, entries: List<ActivityEntry>) {
-        if (activity.isFinishing || activity.isDestroyed) return
+    private fun showGrid(channelId: Long, guildId: Long, voice: Boolean, entries: List<ActivityEntry>) {
+        val activity = EmbeddedActivityHost.hostActivity() ?: return
 
         val bg = ColorCompat.getThemedColor(activity, R.b.colorBackgroundPrimary)
         val textColor = ColorCompat.getThemedColor(activity, R.b.colorHeaderPrimary)
@@ -308,7 +319,7 @@ internal object ActivityPicker {
                 setPadding(8.dp, 12.dp, 8.dp, 12.dp)
                 setOnClickListener {
                     dialog.dismiss()
-                    ActivityApi.launch(channelId, guildId, entry.id, entry.name) {
+                    ActivityApi.launch(channelId, guildId, entry.id, entry.name, voice) {
                         Utils.showToast("Failed to launch ${entry.name}")
                     }
                 }
