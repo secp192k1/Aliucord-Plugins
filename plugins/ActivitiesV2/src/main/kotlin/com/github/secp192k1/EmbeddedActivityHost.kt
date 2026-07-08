@@ -2,8 +2,10 @@ package com.github.secp192k1
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Application
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
@@ -37,6 +39,8 @@ internal object EmbeddedActivityHost {
     private var session: ActivitySession? = null
     private var rpc: ActivityRpc? = null
     private var currentActivity = WeakReference<Activity>(null)
+    private var hostRef = WeakReference<Activity>(null)
+    private var savedOrientation: Int? = null
     var onLeave: ((ActivitySession) -> Unit)? = null
     private lateinit var activityUrl: String
 
@@ -51,7 +55,9 @@ internal object EmbeddedActivityHost {
                 override fun onActivityPaused(activity: Activity) {}
                 override fun onActivityStopped(activity: Activity) {}
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-                override fun onActivityDestroyed(activity: Activity) {}
+                override fun onActivityDestroyed(activity: Activity) {
+                    if (dialog != null && hostRef.get() === activity) closeCurrent()
+                }
             }
         )
 
@@ -82,7 +88,10 @@ internal object EmbeddedActivityHost {
 
         val session = ActivitySession(appId, inst, rawInst, launch, channel, loc)
         this.session = session
+        hostRef = WeakReference(activity)
         activityUrl = ActivityApi.buildUrl(session)
+        savedOrientation = activity.requestedOrientation
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
 
         val web = createWebView(activity, session)
         webView = web
@@ -118,7 +127,7 @@ internal object EmbeddedActivityHost {
             mediaPlaybackRequiresUserGesture = false
             allowContentAccess = true
         }
-        WebView.setWebContentsDebuggingEnabled(true)
+        WebView.setWebContentsDebuggingEnabled(Config.webContentsDebugging)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             ServiceWorkerController.getInstance().setServiceWorkerClient(object : ServiceWorkerClient() {
                 override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
@@ -149,7 +158,11 @@ internal object EmbeddedActivityHost {
         }
 
         web.webChromeClient = object : WebChromeClient() {
-            override fun onPermissionRequest(request: PermissionRequest) = request.grant(request.resources)
+            override fun onPermissionRequest(request: PermissionRequest) {
+                logger.verbose("[activity] handle permission: ${request.origin}")
+                handlePermissionRequest(request)
+            }
+
             override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
                 logger.verbose("[activity] ${msg.message()}")
                 return true
@@ -183,6 +196,38 @@ internal object EmbeddedActivityHost {
         }
     }
 
+    private fun handlePermissionRequest(request: PermissionRequest) {
+        if (!Config.promptForPermissions) {
+            request.grant(request.resources)
+            return
+        }
+
+        val activity = hostActivity()
+        if (activity == null) {
+            request.deny()
+            return
+        }
+
+        val labels = request.resources.map {
+            when (it) {
+                PermissionRequest.RESOURCE_AUDIO_CAPTURE -> "microphone"
+                PermissionRequest.RESOURCE_VIDEO_CAPTURE -> "camera"
+                else -> it.substringAfterLast('.').lowercase()
+            }
+        }.distinct().joinToString(" and ")
+
+        Utils.mainThread.post {
+            AlertDialog.Builder(activity)
+                .setTitle("Activity permission")
+                .setMessage("This activity wants to use your $labels.")
+                .setPositiveButton("Allow") { _, _ -> request.grant(request.resources) }
+                .setNegativeButton("Deny") { _, _ -> request.deny() }
+                .setOnCancelListener { request.deny() }
+                .setCancelable(false)
+                .show()
+        }
+    }
+
     private fun onLoadFailed(reason: String) {
         logger.error("Activity failed to load: $reason", null)
 
@@ -197,15 +242,33 @@ internal object EmbeddedActivityHost {
         val web = webView
         val current = session
         val d = dialog
+        val host = hostRef.get()
+        val orientation = savedOrientation
 
         webView = null
         dialog = null
         participantsRow = null
         session = null
         rpc = null
+        hostRef = WeakReference(null)
+        savedOrientation = null
         activityUrl = ""
+
+        if (orientation != null && host != null && !host.isDestroyed) {
+            try {
+                host.requestedOrientation = orientation
+            } catch (e: Throwable) {
+                logger.error("Failed to restore orientation", e)
+            }
+        }
+
         d?.setOnDismissListener(null)
-        d?.dismiss()
+        try {
+            d?.dismiss()
+        } catch (e: Throwable) {
+            logger.error("Failed to dismiss activity dialog", e)
+        }
+
         (web?.parent as? ViewGroup)?.removeView(web)
         web?.destroy()
 
