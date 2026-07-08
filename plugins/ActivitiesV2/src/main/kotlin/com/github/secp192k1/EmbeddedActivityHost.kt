@@ -4,12 +4,12 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.Context
-import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.ServiceWorkerClient
@@ -87,7 +87,14 @@ internal object EmbeddedActivityHost {
         val d = built.dialog
         dialog = d
         participantsRow = built.participantsRow
-        web.loadUrl(ActivityApi.buildUrl(session))
+        web.loadDataWithBaseURL(
+            "https://discord.com/",
+            ActivityPayload.hostPage(ActivityApi.buildUrl(session)),
+            "text/html",
+            "utf-8",
+            null,
+        )
+
         return try {
             d.show()
             true
@@ -116,10 +123,13 @@ internal object EmbeddedActivityHost {
                 }
             })
         }
+
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(web, true)
+        }
+
         web.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                view.evaluateJavascript(ActivityPayload.PAYLOAD, null)
-            }
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 logger.verbose("HTTP[${request.method}] ${request.url}")
                 return null

@@ -1,24 +1,38 @@
 package com.github.secp192k1
 
-// JS injected into the activity WebView on start. Emulates the host transport that the
-// embedded-app-sdk expects: a stubbed ServiceWorker, an outbound bridge (`window.postMessage`
-// array frames `AliucordRPC.send`), and an inbound hook `window.__hostDeliver`
-// Insane??
+import org.json.JSONObject
+
+// Activity runs inside this html as in iframe to simulate how its done on desktop
+// some activities like chess fail checks like `window.top !== window.self`
+// Bridges the activity sdk parent postMessage transport like this:
+//  TX: `AliucordRPC.send`
+//  RX: `window.__hostDeliver`
+// Even more insane???
 internal object ActivityPayload {
-    val PAYLOAD = """
+    private const val URL_PLACEHOLDER = "__ACTIVITY_URL__"
+
+    private val PAYLOAD = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+        <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}iframe{border:0;width:100%;height:100%;display:block}</style>
+        </head>
+        <body>
+        <iframe id="activity" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; camera; microphone; clipboard-write; clipboard-read; gamepad"></iframe>
+        <script>
         (function(){
-        if(window.__aliucordPayload)return;window.__aliucordPayload=true;
-        var L=[];
-        var act={state:'activated',scriptURL:location.origin+'/sw.js',postMessage:function(){},addEventListener:function(){},removeEventListener:function(){}};
-        var reg={scope:location.origin+'/',active:act,installing:null,waiting:null,navigationPreload:{getState:function(){return Promise.resolve({enabled:false})}},update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}};
-        var sw={controller:act,ready:Promise.resolve(reg),startMessages:function(){},register:function(){return Promise.resolve(reg);},getRegistration:function(){return Promise.resolve(reg);},getRegistrations:function(){return Promise.resolve([reg]);},addEventListener:function(){},removeEventListener:function(){}};
-        window.ServiceWorkerContainer=window.ServiceWorkerContainer||function(){};
-        try{if(!('serviceWorker' in navigator))Object.defineProperty(navigator,'serviceWorker',{value:sw,configurable:true});}catch(e){}
-        var add=window.addEventListener.bind(window);
-        window.addEventListener=function(t,l,o){if(t==='message')L.push(l);return add(t,l,o);};
-        var post=window.postMessage.bind(window);
-        window.postMessage=function(m,o,t){if(Array.isArray(m)){try{AliucordRPC.send(JSON.stringify(m));}catch(e){}return;}return post(m,o,t);};
-        window.__hostDeliver=function(j){var d;try{d=JSON.parse(j);}catch(e){return;}var ev={data:d,origin:'https://discord.com',source:window,ports:[]};for(var i=0;i<L.length;i++){try{L[i](ev);}catch(e){}}if(typeof window.onmessage==='function'){try{window.onmessage(ev);}catch(e){}}};
+        var frame=document.getElementById('activity');
+        window.addEventListener('message',function(ev){
+        if(ev.source===frame.contentWindow&&Array.isArray(ev.data)){try{AliucordRPC.send(JSON.stringify(ev.data));}catch(e){}}
+        });
+        window.__hostDeliver=function(j){var d;try{d=JSON.parse(j);}catch(e){return;}try{frame.contentWindow.postMessage(d,'*');}catch(e){}};
+        frame.src=$URL_PLACEHOLDER;
         })();
-    """.replace(Regex("\\s*\\n\\s*"), "")
+        </script>
+        </body>
+        </html>
+    """ // no trimIndent(): Discord's bundled kotlin-stdlib crashes inside it (obfuscated code)
+
+    internal fun hostPage(activityUrl: String) = PAYLOAD.replace(URL_PLACEHOLDER, JSONObject.quote(activityUrl))
 }

@@ -2,6 +2,7 @@ package com.github.secp192k1
 
 import com.aliucord.Logger
 import com.aliucord.Utils
+import com.discord.stores.StoreStream
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,7 +24,8 @@ internal class ActivityRpc(
                         .put("data", JSONObject().put("v", 1).put("config", JSONObject()
                             .put("cdn_host", "cdn.discordapp.com")
                             .put("api_endpoint", "//discord.com/api")
-                            .put("environment", "production")))
+                            .put("environment", "production"))
+                            .put("user", currentUser()))
                 )
             }
             RpcOpcode.FRAME -> {
@@ -56,6 +58,22 @@ internal class ActivityRpc(
             }
             null -> logger.warn("Unknown RPC opcode: ${tuple.optInt(0, -1)}")
         }
+    }
+
+    private fun currentUser(): JSONObject {
+        val user = JSONObject()
+
+        try {
+            val me = StoreStream.getUsers().me
+            user.put("id", me.id.toString())
+                .put("username", me.username)
+                .put("discriminator", me.discriminator.toString())
+                .put("avatar", me.avatar ?: JSONObject.NULL)
+        } catch (e: Throwable) {
+            logger.error("Failed to build READY user object", e)
+        }
+
+        return user
     }
 
     private fun onResult(cmd: String, nonce: Any?, result: ApiResult) = when (result) {
