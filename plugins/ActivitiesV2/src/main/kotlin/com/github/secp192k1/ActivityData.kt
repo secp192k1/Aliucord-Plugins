@@ -6,6 +6,7 @@ import com.aliucord.wrappers.ChannelWrapper.Companion.guildId
 import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.aliucord.wrappers.ChannelWrapper.Companion.type
 import com.aliucord.wrappers.ChannelWrapper.Companion.name
+import com.discord.api.channel.Channel
 import com.discord.api.voice.state.VoiceState
 import com.discord.models.user.User
 import com.discord.stores.StoreStream
@@ -15,16 +16,22 @@ import org.json.JSONObject
 internal object ActivityData {
     private val logger = Logger("ActivitiesV2")
 
-    fun channel(session: ActivitySession): JSONObject {
-        val channel = session.channel
+    fun channel(session: ActivitySession, args: JSONObject): JSONObject {
+        val channel = resolveChannel(session, args)
         val json = JSONObject()
             .put("id", channel.id.toString())
             .put("type", channel.type)
             .put("name", channel.name)
-            .put("voice_states", voiceStates(session))
+            .put("voice_states", voiceStates(channel))
             .put("messages", JSONArray())
 
         return json
+    }
+
+    private fun resolveChannel(session: ActivitySession, args: JSONObject): Channel {
+        val requestedId = args.optString("channel_id").toLongOrNull() ?: return session.channel
+        if (requestedId == session.channel.id) return session.channel
+        return StoreStream.getChannels().getChannel(requestedId) ?: session.channel
     }
 
     fun participants(userIds: List<Long>): JSONObject {
@@ -49,13 +56,13 @@ internal object ActivityData {
         return JSONObject().put("permissions", permissions.toString())
     }
 
-    private fun voiceStates(session: ActivitySession): JSONArray {
+    private fun voiceStates(channel: Channel): JSONArray {
         val states = JSONArray()
 
         try {
             val users = StoreStream.getUsers().users
             val voiceStates = StoreStream.getVoiceStates()
-                .getForChannel(session.channel.guildId, session.channel.id)
+                .getForChannel(channel.guildId, channel.id)
 
             for ((userId, state) in voiceStates) {
                 val user = users[userId] ?: continue
