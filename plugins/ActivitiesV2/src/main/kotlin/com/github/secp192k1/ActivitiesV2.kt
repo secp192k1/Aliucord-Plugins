@@ -27,6 +27,11 @@ import java.util.concurrent.ConcurrentHashMap
 class ActivitiesV2 : Plugin() {
     private val launched: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap())
 
+    init {
+        settingsTab = SettingsTab(Settings::class.java, SettingsTab.Type.BOTTOM_SHEET).withArgs(settings)
+        Config.attach(settings)
+    }
+
     private companion object {
         const val V1 = "EMBEDDED_ACTIVITY_UPDATE"
         const val V2 = "EMBEDDED_ACTIVITY_UPDATE_V2"
