@@ -1,10 +1,15 @@
-version = "1.2.1"
+version = "1.2.2"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.2.2
+        * Use real locale for activities
+        * Support opening external links inside activities
+        * Quest requests answered gracefully, by skipping
+
         # 1.2.1
         * Faster message processing
         * Faster loading of the activity picker
