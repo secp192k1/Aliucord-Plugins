@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -48,7 +49,9 @@ import java.util.concurrent.ConcurrentHashMap
 internal object ActivityPicker {
     private val logger = Logger("ActivitiesV2")
     private val tabStringId = View.generateViewId()
-    private val iconCache = ConcurrentHashMap<String, Bitmap>()
+    private val iconCache = object : LruCache<String, Bitmap>(4 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+    }
     private val entriesCache = ConcurrentHashMap<Long, CachedEntries>()
 
     private const val TAB_TAG = "activities"
@@ -290,7 +293,8 @@ internal object ActivityPicker {
             try {
                 val bitmap = URL("https://cdn.discordapp.com/app-icons/$key.png?size=128")
                     .openStream().use(BitmapFactory::decodeStream) ?: return@execute
-                iconCache[key] = bitmap
+
+                iconCache.put(key, bitmap)
                 image.post { image.setImageBitmap(bitmap) }
             } catch (e: Throwable) {
                 logger.error("Failed to load icon for ${entry.id}", e)

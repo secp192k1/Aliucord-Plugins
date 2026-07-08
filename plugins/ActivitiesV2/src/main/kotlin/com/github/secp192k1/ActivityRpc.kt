@@ -68,7 +68,7 @@ internal class ActivityRpc(
                     RpcCommand.SET_ORIENTATION_LOCK_STATE -> reply(command, nonce, JSONObject())
                     null -> {
                         logger.warn("Unhandled RPC command: $command args=$args")
-                        reply(command, nonce, JSONObject())
+                        replyError(command, nonce, RpcErrorCode.INVALID_COMMAND.value, "Unknown command: $command")
                     }
                 }
             }

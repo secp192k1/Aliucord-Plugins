@@ -55,7 +55,7 @@ internal enum class ChannelType(val value: Int) {
     val isVoice get() = this == GUILD_VOICE || this == GUILD_STAGE_VOICE
 
     companion object {
-        fun from(value: Int) = values().firstOrNull { it.value == value }
+        fun from(value: Int) = entries.firstOrNull { it.value == value }
     }
 }
 
@@ -65,12 +65,13 @@ internal enum class RpcOpcode(val value: Int) {
     FRAME(1);
 
     companion object {
-        fun from(value: Int) = values().firstOrNull { it.value == value }
+        fun from(value: Int) = entries.firstOrNull { it.value == value }
     }
 }
 
 // Embedded app RPC error codes used when rejecting commands
 internal enum class RpcErrorCode(val value: Int) {
+    INVALID_COMMAND(4002),
     AUTHENTICATE_FAILED(4009),
     AUTHORIZE_FAILED(4011),
 }
@@ -91,7 +92,7 @@ internal enum class RpcCommand {
     GET_PLATFORM_BEHAVIORS;
 
     companion object {
-        fun from(name: String) = values().firstOrNull { it.name == name }
+        fun from(name: String) = entries.firstOrNull { it.name == name }
     }
 }
 
@@ -119,7 +120,7 @@ internal enum class InteractionFailureReason(val code: Int, val message: String)
     ACTIVITY_LAUNCH_INVALID_USER_REGION_FOR_APPLICATION(20, "The embedded activity is not supported in the current region");
 
     companion object {
-        fun messageFor(code: Int) = values().firstOrNull { it.code == code }?.message
+        fun messageFor(code: Int) = entries.firstOrNull { it.code == code }?.message
             ?: "Failed to launch ($code)"
     }
 }

@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -25,13 +26,14 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.lytefast.flexinput.R
 import java.net.URL
-import java.util.concurrent.ConcurrentHashMap
 
 internal class ActivityDialog(val dialog: BottomSheetDialog, val participantsRow: LinearLayout)
 
 internal object ActivityUi {
     private val logger = Logger("ActivitiesV2")
-    private val avatarCache = ConcurrentHashMap<String, Bitmap>()
+    private val avatarCache = object : LruCache<String, Bitmap>(2 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+    }
 
     private const val MAX_AVATARS = 5
 
@@ -149,7 +151,7 @@ internal object ActivityUi {
         Utils.threadPool.execute {
             try {
                 val bitmap = URL(url).openStream().use(BitmapFactory::decodeStream) ?: return@execute
-                avatarCache[url] = bitmap
+                avatarCache.put(url, bitmap)
                 image.post { setRoundAvatar(image, bitmap) }
             } catch (e: Throwable) {
                 logger.error("Failed to load avatar for $userId", e)
