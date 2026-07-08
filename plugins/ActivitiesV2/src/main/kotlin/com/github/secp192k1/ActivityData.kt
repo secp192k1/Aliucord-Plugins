@@ -1,20 +1,27 @@
 package com.github.secp192k1
 
+import com.aliucord.Logger
+import com.aliucord.utils.ReflectUtils
+import com.aliucord.wrappers.ChannelWrapper.Companion.guildId
 import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.aliucord.wrappers.ChannelWrapper.Companion.type
 import com.aliucord.wrappers.ChannelWrapper.Companion.name
+import com.discord.api.voice.state.VoiceState
+import com.discord.models.user.User
 import com.discord.stores.StoreStream
 import org.json.JSONArray
 import org.json.JSONObject
 
 internal object ActivityData {
+    private val logger = Logger("ActivitiesV2")
+
     fun channel(session: ActivitySession): JSONObject {
         val channel = session.channel
         val json = JSONObject()
             .put("id", channel.id.toString())
             .put("type", channel.type)
             .put("name", channel.name)
-            .put("voice_states", JSONArray())
+            .put("voice_states", voiceStates(session))
             .put("messages", JSONArray())
 
         return json
@@ -26,15 +33,7 @@ internal object ActivityData {
 
         for (id in userIds) {
             val user = users[id] ?: continue
-
-            list.put(
-                JSONObject()
-                    .put("id", user.id.toString())
-                    .put("username", user.username)
-                    .put("discriminator", user.discriminator.toString())
-                    .put("avatar", user.avatar ?: JSONObject.NULL)
-                    .put("flags", 0)
-            )
+            list.put(userJson(user).put("flags", 0))
         }
 
         return JSONObject().put("participants", list)
@@ -49,4 +48,45 @@ internal object ActivityData {
 
         return JSONObject().put("permissions", permissions.toString())
     }
+
+    private fun voiceStates(session: ActivitySession): JSONArray {
+        val states = JSONArray()
+
+        try {
+            val users = StoreStream.getUsers().users
+            val voiceStates = StoreStream.getVoiceStates()
+                .getForChannel(session.channel.guildId, session.channel.id)
+
+            for ((userId, state) in voiceStates) {
+                val user = users[userId] ?: continue
+                val mute = state.getField("mute")
+
+                states.put(
+                    JSONObject()
+                        .put("mute", mute)
+                        .put("nick", user.username)
+                        .put("user", userJson(user))
+                        .put("voice_state", JSONObject()
+                            .put("mute", mute)
+                            .put("deaf", state.getField("deaf"))
+                            .put("self_mute", state.getField("selfMute"))
+                            .put("self_deaf", state.getField("selfDeaf"))
+                            .put("suppress", state.getField("suppress")))
+                        .put("volume", 100)
+                )
+            }
+        } catch (e: Throwable) {
+            logger.error("Failed to build voice states", e)
+        }
+
+        return states
+    }
+
+    private fun userJson(user: User) = JSONObject()
+        .put("id", user.id.toString())
+        .put("username", user.username)
+        .put("discriminator", user.discriminator.toString())
+        .put("avatar", user.avatar ?: JSONObject.NULL)
+
+    private fun VoiceState.getField(type: String) = ReflectUtils.getField(this, type) == true
 }
