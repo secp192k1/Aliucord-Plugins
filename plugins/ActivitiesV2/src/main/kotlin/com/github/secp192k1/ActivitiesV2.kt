@@ -10,7 +10,6 @@ import com.aliucord.patcher.component1
 import com.aliucord.patcher.component2
 import com.aliucord.patcher.component3
 import com.aliucord.utils.GsonUtils.fromJson
-import com.aliucord.utils.ReflectUtils
 import com.aliucord.wrappers.ChannelWrapper.Companion.guildId
 import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.aliucord.wrappers.ChannelWrapper.Companion.type
@@ -27,8 +26,11 @@ import com.discord.stores.StoreStream
 import com.google.gson.reflect.TypeToken
 import org.json.JSONArray
 import org.json.JSONObject
+import java.lang.reflect.Field
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import com.discord.api.message.Message as ApiMessage
 import com.discord.models.message.Message as ModelMessage
 
@@ -37,6 +39,26 @@ import com.discord.models.message.Message as ModelMessage
 @Suppress("unused")
 class ActivitiesV2 : Plugin() {
     private val launched: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap())
+    private val thread: ExecutorService = Executors.newSingleThreadExecutor()
+    private val fieldCache = ConcurrentHashMap<String, Field>()
+
+    private fun field(obj: Any, name: String): Field = fieldCache.getOrPut("${obj.javaClass.name}#$name") {
+        var cls: Class<*>? = obj.javaClass
+
+        while (cls != null) {
+            try {
+                return@getOrPut cls.getDeclaredField(name).apply { isAccessible = true }
+            } catch (_: NoSuchFieldException) {
+                cls = cls.superclass
+            }
+        }
+
+        throw NoSuchFieldException("${obj.javaClass.name}#$name")
+    }
+
+    private fun getField(obj: Any, name: String): Any? = field(obj, name).get(obj)
+
+    private fun setField(obj: Any, name: String, value: Any?) = field(obj, name).set(obj, value)
 
     init {
         settingsTab = SettingsTab(Settings::class.java, SettingsTab.Type.BOTTOM_SHEET).withArgs(settings)
@@ -79,7 +101,7 @@ class ActivitiesV2 : Plugin() {
             if (event in SILENCED_EVENTS) param.result = null
         }
 
-        GatewayAPI.onRawEvent(V2) { raw -> Utils.threadPool.execute { handleV2Update(raw) } }
+        GatewayAPI.onRawEvent(V2) { raw -> thread.execute { handleV2Update(raw) } }
         patchLaunchMessages()
     }
 
@@ -140,12 +162,12 @@ class ActivitiesV2 : Plugin() {
     private fun injectLaunchCard(msg: ApiMessage) {
         try {
             if (!isLaunchMessage(
-                ReflectUtils.getField(msg, "type") as? Int,
-                ReflectUtils.getField(msg, "content") as? String,
+                getField(msg, "type") as? Int,
+                getField(msg, "content") as? String,
                 msg.p()?.b()
             )) return
 
-            applyLaunchCard(msg, msg.b(), ReflectUtils.getField(msg, "channelId") as? Long ?: return)
+            applyLaunchCard(msg, msg.b(), getField(msg, "channelId") as? Long ?: return)
         } catch (e: Throwable) {
             logger.error("Failed to patch launch message", e)
         }
@@ -162,15 +184,15 @@ class ActivitiesV2 : Plugin() {
     }
 
     private fun applyLaunchCard(msg: Any, application: Any?, channelId: Long) {
-        val appId = application?.let { ReflectUtils.getField(it, "id") as? Long }?.toString()
+        val appId = application?.let { getField(it, "id") as? Long }?.toString()
 
         if (appId == null) {
             // Fallback to a plain text body so it's at least visible
-            ReflectUtils.setField(msg, "content", "Started an activity")
+            setField(msg, "content", "Started an activity")
             return
         }
 
-        val appName = ReflectUtils.getField(application, "name") as? String ?: "Activity"
+        val appName = getField(application, "name") as? String ?: "Activity"
 
         val embedJson = JSONObject()
             .put("type", "rich")
@@ -201,8 +223,8 @@ class ActivitiesV2 : Plugin() {
             TypeToken.getParameterized(List::class.java, Component::class.java).type,
         )
 
-        ReflectUtils.setField(msg, "embeds", listOf(embed))
-        ReflectUtils.setField(msg, "components", components)
+        setField(msg, "embeds", listOf(embed))
+        setField(msg, "components", components)
     }
 
     private fun handleV2Update(raw: String) {
@@ -279,5 +301,9 @@ class ActivitiesV2 : Plugin() {
         }
     }
 
-    override fun stop(context: Context) = patcher.unpatchAll()
+    override fun stop(context: Context) {
+        logger.info("Stopping")
+        thread.shutdown()
+        patcher.unpatchAll()
+    }
 }

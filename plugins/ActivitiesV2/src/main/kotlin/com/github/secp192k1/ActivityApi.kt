@@ -44,7 +44,7 @@ internal object ActivityApi {
     }
 
     fun fetchAppName(applicationId: String): String? {
-        appNames[applicationId]?.let { return it }
+        appNames[applicationId]?.let { return it.ifEmpty { null } }
 
         return try {
             val res = Http.Request.newDiscordRNRequest("/applications/public?application_ids=$applicationId", "GET").execute()
@@ -54,7 +54,12 @@ internal object ActivityApi {
             }
 
             val name = JSONArray(res.text()).optJSONObject(0)?.optString("name")
-            if (name.isNullOrEmpty()) return null
+            if (name.isNullOrEmpty()) {
+                // Definitive "no name" answer,
+                // cache it so this app never refetches
+                appNames[applicationId] = ""
+                return null
+            }
 
             appNames[applicationId] = name
             name

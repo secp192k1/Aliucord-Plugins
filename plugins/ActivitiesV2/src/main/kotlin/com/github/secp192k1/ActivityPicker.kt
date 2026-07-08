@@ -149,12 +149,18 @@ internal object ActivityPicker {
     }
 
     private fun replaceComingSoonText(root: ViewGroup) {
-        val comingSoon = root.context.getString(R.h.embedded_activities_in_video_call_mobile_preview_subtitle_short)
-        val comingSoonAlt = root.context.getString(R.h.discord_u_coming_soon_to_mobile)
+        replaceComingSoonText(
+            root,
+            root.context.getString(R.h.embedded_activities_in_video_call_mobile_preview_subtitle_short),
+            root.context.getString(R.h.discord_u_coming_soon_to_mobile)
+        )
+    }
+
+    private fun replaceComingSoonText(root: ViewGroup, comingSoon: String, comingSoonAlt: String) {
         for (i in 0 until root.childCount) {
             when (val child = root.getChildAt(i)) {
                 is TextView -> if (child.text == comingSoon || child.text == comingSoonAlt) child.text = "Tap to join"
-                is ViewGroup -> replaceComingSoonText(child)
+                is ViewGroup -> replaceComingSoonText(child, comingSoon, comingSoonAlt)
             }
         }
     }
@@ -213,11 +219,30 @@ internal object ActivityPicker {
     }
 
     private fun fetchEntries(guildId: Long): List<ActivityEntry>? {
+        val guildEntries = mutableListOf<ActivityEntry>()
+        val shelfEntries = mutableListOf<ActivityEntry>()
         val entries = mutableListOf<ActivityEntry>()
         val seen = HashSet<String>()
-        val isGuildValid = guildId != 0L && fetchGuildApps(guildId, entries, seen)
-        val isShelfValid = fetchShelf(guildId, entries, seen)
-        return if (isGuildValid || isShelfValid) entries else null
+
+        val guildFuture = if (guildId != 0L) {
+            Utils.threadPool.submit<Boolean> { fetchGuildApps(guildId, guildEntries, HashSet()) }
+        } else null
+
+        val isShelfValid = fetchShelf(guildId, shelfEntries, HashSet())
+
+        val isGuildValid = try {
+            guildFuture?.get() == true
+        } catch (e: Throwable) {
+            logger.error("Failed to fetch guild activities", e)
+            false
+        }
+
+        if (!isGuildValid && !isShelfValid) return null
+
+        for (entry in guildEntries) if (seen.add(entry.id)) entries.add(entry)
+        for (entry in shelfEntries) if (seen.add(entry.id)) entries.add(entry)
+
+        return entries
     }
 
     private fun fetchGuildApps(guildId: Long, entries: MutableList<ActivityEntry>, seen: MutableSet<String>): Boolean {
