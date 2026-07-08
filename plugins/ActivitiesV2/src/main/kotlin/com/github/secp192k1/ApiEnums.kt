@@ -43,9 +43,20 @@ internal enum class ChannelType(val value: Int) {
     DM(1),
     GUILD_VOICE(2),
     GROUP_DM(3),
+    GUILD_NEWS(5),
+    NEWS_THREAD(10),
     PUBLIC_THREAD(11),
     PRIVATE_THREAD(12),
     GUILD_STAGE_VOICE(13),
+    GUILD_FORUM(15),
+    GUILD_MEDIA(16),
+    EPHEMERAL_DM(18);
+
+    val isVoice get() = this == GUILD_VOICE || this == GUILD_STAGE_VOICE
+
+    companion object {
+        fun from(value: Int) = values().firstOrNull { it.value == value }
+    }
 }
 
 // Embedded frame opcodes exchanged with the WebView

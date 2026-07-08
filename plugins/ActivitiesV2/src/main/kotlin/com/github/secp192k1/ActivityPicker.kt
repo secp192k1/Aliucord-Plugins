@@ -178,13 +178,11 @@ internal object ActivityPicker {
     private fun openPicker() {
         val channel = StoreStream.getChannelsSelected().selectedChannel
             ?: StoreStream.getVoiceChannelSelected().selectedVoiceChannel
-        val guildId = channel?.guildId ?: 0L
-        val channelId = channel?.id ?: 0L
-        val voice = channel != null && (
-            channel.type == ChannelType.GUILD_VOICE.value ||
-            channel.type == ChannelType.GUILD_STAGE_VOICE.value
-        )
-        logger.info("Opening picker for channel.name=${channel.name} channel.type=${channel.type}")
+        val guildId = channel.guildId
+        val channelId = channel.id
+        val voice = ChannelType.from(channel.type)?.isVoice ?: false
+
+        logger.info("Opening picker for channel name=${channel.name} type=${channel.type} isVoice=$voice")
 
         if (channelId == 0L) {
             Utils.showToast("No channel selected")
