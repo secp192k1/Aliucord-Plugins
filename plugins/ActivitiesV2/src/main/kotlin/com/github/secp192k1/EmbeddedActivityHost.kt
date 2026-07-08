@@ -5,7 +5,9 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
@@ -193,6 +195,34 @@ internal object EmbeddedActivityHost {
         Utils.mainThread.post {
             val row = participantsRow ?: return@post
             ActivityUi.updateParticipants(row, userIds)
+        }
+    }
+
+    fun openExternalLink(url: String, onResult: (Boolean) -> Unit) {
+        val activity = hostActivity()
+
+        if (activity == null || !(url.startsWith("https://") || url.startsWith("http://"))) {
+            onResult(false)
+            return
+        }
+
+        Utils.mainThread.post {
+            AlertDialog.Builder(activity)
+                .setTitle("Leaving Discord")
+                .setMessage("This activity wants to open:\n$url")
+                .setPositiveButton("Open") { _, _ ->
+                    try {
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        onResult(true)
+                    } catch (e: Throwable) {
+                        logger.error("Failed to open external link", e)
+                        onResult(false)
+                    }
+                }
+                .setNegativeButton("Cancel") { _, _ -> onResult(false) }
+                .setOnCancelListener { onResult(false) }
+                .setCancelable(false)
+                .show()
         }
     }
 

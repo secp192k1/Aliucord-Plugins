@@ -6,6 +6,7 @@ import com.discord.stores.StoreStream
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Collections
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 internal class ActivityRpc(
@@ -63,6 +64,13 @@ internal class ActivityRpc(
                         if (!activity.has("name")) activity.put("name", "")
                         if (!activity.has("type")) activity.put("type", ActivityType.PLAYING.value)
                         reply(command, nonce, activity)
+                    }
+                    RpcCommand.USER_SETTINGS_GET_LOCALE -> reply(command, nonce, JSONObject().put("locale", Locale.getDefault().toLanguageTag()))
+                    RpcCommand.GET_QUEST -> reply(command, nonce, JSONObject().put("quest", JSONObject.NULL))
+                    RpcCommand.OPEN_EXTERNAL_LINK -> {
+                        EmbeddedActivityHost.openExternalLink(args.optString("url")) { opened ->
+                            reply(command, nonce, JSONObject().put("opened", opened))
+                        }
                     }
                     RpcCommand.CAPTURE_LOG, RpcCommand.SEND_ANALYTICS_EVENT, RpcCommand.GET_PLATFORM_BEHAVIORS,
                     RpcCommand.SET_ORIENTATION_LOCK_STATE -> reply(command, nonce, JSONObject())

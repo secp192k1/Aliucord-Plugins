@@ -89,7 +89,10 @@ internal enum class RpcCommand {
     SET_ACTIVITY,
     CAPTURE_LOG,
     SEND_ANALYTICS_EVENT,
-    GET_PLATFORM_BEHAVIORS;
+    GET_PLATFORM_BEHAVIORS,
+    USER_SETTINGS_GET_LOCALE,
+    GET_QUEST,
+    OPEN_EXTERNAL_LINK;
 
     companion object {
         fun from(name: String) = entries.firstOrNull { it.name == name }
