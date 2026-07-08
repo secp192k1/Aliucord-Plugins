@@ -10,6 +10,8 @@ import com.aliucord.patcher.component1
 import com.aliucord.patcher.component2
 import com.aliucord.patcher.component3
 import com.aliucord.utils.GsonUtils.fromJson
+import com.aliucord.wrappers.ChannelWrapper.Companion.guildId
+import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.discord.api.embeddedactivities.EmbeddedActivityInboundUpdate
 import com.discord.gateway.GatewaySocket
 import com.discord.models.deserialization.gson.InboundGatewayGsonParser
@@ -70,6 +72,7 @@ class ActivitiesV2 : Plugin() {
             val applicationId = instance.optString("application_id")
             if (channelId.isEmpty() || applicationId.isEmpty()) return
 
+            val channel = StoreStream.getChannels().getChannel(channelId.toLong())
             val userIds = mutableListOf<String>()
             instance.optJSONArray("participants")?.let { participants ->
                 for (i in 0 until participants.length()) {
@@ -97,19 +100,17 @@ class ActivitiesV2 : Plugin() {
             StoreStream.getGatewaySocket().handleDispatch(V1, update)
 
             val instanceId = instance.optString("instance_id")
-            if (userIds.contains(StoreStream.getUsers().me.id.toString()) && launched.add(instanceId)) {
+            if (channel != null && userIds.contains(StoreStream.getUsers().me.id.toString()) && launched.add(instanceId)) {
                 val compositeInstanceId = instance.optString("composite_instance_id").ifEmpty { instanceId }
-                val launchId = instance.optString("launch_id")
-                val guildId =
-                    if (location.has("guild_id") && !location.isNull("guild_id")) location.optString("guild_id") else null
-                val locationId = location.optString("id")
+
                 Utils.mainThread.post {
                     if (!EmbeddedActivityHost.open(
                             applicationId,
                             compositeInstanceId,
-                            instanceId, launchId,
-                            channelId, guildId,
-                            locationId,
+                            instanceId,
+                            instance.optString("launch_id"),
+                            channel,
+                            location.optString("id"),
                         )
                     ) launched.remove(instanceId)
                 }
@@ -125,10 +126,10 @@ class ActivitiesV2 : Plugin() {
     private fun dispatchLeave(session: ActivitySession) {
         try {
             val v1 = JSONObject()
-                .put("channel_id", session.channelId)
+                .put("channel_id", session.channel.id)
                 .put("users", JSONArray())
                 .put("embedded_activity", JSONObject().put("application_id", session.applicationId))
-            session.guildId?.let { v1.put("guild_id", it) }
+            session.channel.guildId.takeIf { it != 0L }?.let { v1.put("guild_id", it.toString()) }
             val update = InboundGatewayGsonParser.INSTANCE.gatewayGsonInstance
                 .fromJson(v1.toString(), EmbeddedActivityInboundUpdate::class.java)
             StoreStream.getGatewaySocket().handleDispatch(V1, update)

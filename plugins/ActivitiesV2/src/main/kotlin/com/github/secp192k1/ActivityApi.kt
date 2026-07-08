@@ -7,6 +7,9 @@ import com.aliucord.Utils
 import com.aliucord.api.GatewayAPI
 import com.aliucord.utils.IOUtils
 import com.aliucord.utils.ReflectUtils
+import com.aliucord.wrappers.ChannelWrapper.Companion.guildId
+import com.aliucord.wrappers.ChannelWrapper.Companion.id
+import com.aliucord.wrappers.ChannelWrapper.Companion.type
 import com.discord.stores.StoreStream
 import org.json.JSONArray
 import org.json.JSONObject
@@ -67,11 +70,11 @@ internal object ActivityApi {
         val params = StringBuilder("instance_id=").append(urlEncode(session.instanceId))
             .append("&location_id=").append(urlEncode(session.locationId))
             .append("&launch_id=").append(urlEncode(session.launchId))
-            .append("&channel_id=").append(urlEncode(session.channelId))
+            .append("&channel_id=").append(urlEncode(session.channel.id.toString()))
             .append("&frame_id=").append(UUID.randomUUID())
             .append("&platform=mobile")
             .append("&mobile_app_version=").append(APP_VERSION)
-        session.guildId?.let { params.append("&guild_id=").append(urlEncode(it)) }
+        session.channel.guildId.takeIf { it != 0L }?.let { params.append("&guild_id=").append(it) }
         return "https://${session.applicationId}.discordsays.com/?$params"
     }
 
@@ -89,9 +92,9 @@ internal object ActivityApi {
             val route = "/oauth2/authorize?client_id=${urlEncode(authClientId)}&response_type=code&scope=$scopes&state=${urlEncode(state)}"
 
             val locationContext = JSONObject()
-                .put("channel_id", session.channelId)
-                .put("channel_type", ChannelType.GUILD_TEXT.value)
-            session.guildId?.let { locationContext.put("guild_id", it) }
+                .put("channel_id", session.channel.id)
+                .put("channel_type", session.channel.type)
+            session.channel.guildId.takeIf { it != 0L }?.let { locationContext.put("guild_id", it.toString()) }
             val body = JSONObject()
                 .put("authorize", true)
                 .put("integration_type", ApplicationIntegrationType.USER_INSTALL.value)

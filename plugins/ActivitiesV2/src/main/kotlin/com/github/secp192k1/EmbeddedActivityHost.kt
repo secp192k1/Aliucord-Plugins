@@ -22,6 +22,7 @@ import android.webkit.WebViewClient
 import android.widget.LinearLayout
 import com.aliucord.Logger
 import com.aliucord.Utils
+import com.discord.api.channel.Channel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.lang.ref.WeakReference
 
@@ -67,7 +68,7 @@ internal object EmbeddedActivityHost {
         return if (!fallback.isFinishing && !fallback.isDestroyed) fallback else null
     }
 
-    fun open(appId: String, inst: String, rawInst: String, launch: String, chan: String, guild: String?, loc: String): Boolean {
+    fun open(appId: String, inst: String, rawInst: String, launch: String, channel: Channel, loc: String): Boolean {
         dialog?.dismiss()
 
         val activity = hostActivity()
@@ -76,7 +77,7 @@ internal object EmbeddedActivityHost {
             return false
         }
 
-        val session = ActivitySession(appId, inst, rawInst, launch, chan, guild, loc)
+        val session = ActivitySession(appId, inst, rawInst, launch, channel, loc)
         this.session = session
 
         val web = createWebView(activity, session)
