@@ -92,7 +92,7 @@ internal object ActivityApi {
             val route = "/oauth2/authorize?client_id=${urlEncode(authClientId)}&response_type=code&scope=$scopes&state=${urlEncode(state)}"
 
             val locationContext = JSONObject()
-                .put("channel_id", session.channel.id)
+                .put("channel_id", session.channel.id.toString())
                 .put("channel_type", session.channel.type)
             session.channel.guildId.takeIf { it != 0L }?.let { locationContext.put("guild_id", it.toString()) }
             val body = JSONObject()

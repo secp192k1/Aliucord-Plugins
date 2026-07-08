@@ -15,6 +15,7 @@ import android.webkit.PermissionRequest
 import android.webkit.ServiceWorkerClient
 import android.webkit.ServiceWorkerController
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -34,8 +35,10 @@ internal object EmbeddedActivityHost {
     private var participantsRow: LinearLayout? = null
     private var webView: WebView? = null
     private var session: ActivitySession? = null
+    private var rpc: ActivityRpc? = null
     private var currentActivity = WeakReference<Activity>(null)
     var onLeave: ((ActivitySession) -> Unit)? = null
+    private lateinit var activityUrl: String
 
     fun preload(ctx: Context) {
         (ctx.applicationContext as? Application)?.registerActivityLifecycleCallbacks(
@@ -69,7 +72,7 @@ internal object EmbeddedActivityHost {
     }
 
     fun open(appId: String, inst: String, rawInst: String, launch: String, channel: Channel, loc: String): Boolean {
-        dialog?.dismiss()
+        closeCurrent()
 
         val activity = hostActivity()
         if (activity == null) {
@@ -79,17 +82,18 @@ internal object EmbeddedActivityHost {
 
         val session = ActivitySession(appId, inst, rawInst, launch, channel, loc)
         this.session = session
+        activityUrl = ActivityApi.buildUrl(session)
 
         val web = createWebView(activity, session)
         webView = web
 
-        val built = ActivityUi.buildDialog(activity, web) { onClosed() }
+        val built = ActivityUi.buildDialog(activity, web) { closeCurrent() }
         val d = built.dialog
         dialog = d
         participantsRow = built.participantsRow
         web.loadDataWithBaseURL(
             "https://discord.com/",
-            ActivityPayload.hostPage(ActivityApi.buildUrl(session)),
+            ActivityPayload.hostPage(activityUrl),
             "text/html",
             "utf-8",
             null,
@@ -100,7 +104,7 @@ internal object EmbeddedActivityHost {
             true
         } catch (e: WindowManager.BadTokenException) {
             logger.error("Invalid activity window", e)
-            onClosed()
+            closeCurrent()
             false
         }
     }
@@ -134,7 +138,16 @@ internal object EmbeddedActivityHost {
                 logger.verbose("HTTP[${request.method}] ${request.url}")
                 return null
             }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.url.toString() == activityUrl) onLoadFailed(error.toString())
+            }
+
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+                if (request.url.toString() == activityUrl) onLoadFailed("HTTP ${errorResponse.statusCode}")
+            }
         }
+
         web.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) = request.grant(request.resources)
             override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
@@ -142,7 +155,10 @@ internal object EmbeddedActivityHost {
                 return true
             }
         }
+
         val rpc = ActivityRpc(session) { js -> web.post { web.evaluateJavascript(js, null) } }
+        this.rpc = rpc
+
         web.addJavascriptInterface(object {
             @JavascriptInterface
             @Suppress("unused")
@@ -160,21 +176,39 @@ internal object EmbeddedActivityHost {
     fun updateParticipants(instanceId: String, userIds: List<Long>) {
         if (session?.rawInstanceId != instanceId) return
 
+        rpc?.updateParticipants(ActivityData.participants(userIds))
         Utils.mainThread.post {
             val row = participantsRow ?: return@post
             ActivityUi.updateParticipants(row, userIds)
         }
     }
 
-    private fun onClosed() {
+    private fun onLoadFailed(reason: String) {
+        logger.error("Activity failed to load: $reason", null)
+
+        Utils.mainThread.post {
+            if (dialog == null) return@post
+            Utils.showToast("Activity failed to load")
+            closeCurrent()
+        }
+    }
+
+    private fun closeCurrent() {
         val web = webView
         val current = session
+        val d = dialog
+
         webView = null
         dialog = null
         participantsRow = null
         session = null
+        rpc = null
+        activityUrl = ""
+        d?.setOnDismissListener(null)
+        d?.dismiss()
         (web?.parent as? ViewGroup)?.removeView(web)
         web?.destroy()
+
         current?.let {
             ActivityApi.leave(it)
             onLeave?.invoke(it)
