@@ -22,6 +22,7 @@ internal object ActivityData {
             .put("id", channel.id.toString())
             .put("type", channel.type)
             .put("name", channel.name)
+            .put("guild_id", channel.guildId.takeIf { it != 0L }?.toString() ?: JSONObject.NULL)
             .put("voice_states", voiceStates(channel))
             .put("messages", JSONArray())
 
@@ -46,11 +47,12 @@ internal object ActivityData {
         return JSONObject().put("participants", list)
     }
 
-    fun permissions(session: ActivitySession): JSONObject {
+    fun permissions(session: ActivitySession, args: JSONObject): JSONObject {
         var permissions = 0L
 
         try {
-            StoreStream.getPermissions().permissionsByChannel[session.channel.id]?.let { permissions = it }
+            val channel = resolveChannel(session, args)
+            StoreStream.getPermissions().permissionsByChannel[channel.id]?.let { permissions = it }
         } catch (_: Throwable) { }
 
         return JSONObject().put("permissions", permissions.toString())

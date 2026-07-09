@@ -289,7 +289,7 @@ class ActivitiesV2 : Plugin() {
     private fun dispatchLeave(session: ActivitySession) {
         try {
             val v1 = JSONObject()
-                .put("channel_id", session.channel.id)
+                .put("channel_id", session.channel.id.toString())
                 .put("users", JSONArray())
                 .put("embedded_activity", JSONObject().put("application_id", session.applicationId))
             session.channel.guildId.takeIf { it != 0L }?.let { v1.put("guild_id", it.toString()) }

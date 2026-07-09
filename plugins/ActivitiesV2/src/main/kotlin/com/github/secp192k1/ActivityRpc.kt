@@ -48,7 +48,7 @@ internal class ActivityRpc(
                     RpcCommand.AUTHORIZE -> Utils.threadPool.execute { onResult(command, nonce, ActivityApi.authorize(session, clientId, args)) }
                     RpcCommand.AUTHENTICATE -> Utils.threadPool.execute { onResult(command, nonce, ActivityApi.authenticate(args.optString("access_token"))) }
                     RpcCommand.GET_CHANNEL -> reply(command, nonce, ActivityData.channel(session, args))
-                    RpcCommand.GET_CHANNEL_PERMISSIONS -> reply(command, nonce, ActivityData.permissions(session))
+                    RpcCommand.GET_CHANNEL_PERMISSIONS -> reply(command, nonce, ActivityData.permissions(session, args))
                     RpcCommand.ENCOURAGE_HW_ACCELERATION -> reply(command, nonce, JSONObject().put("enabled", true))
                     RpcCommand.SUBSCRIBE -> {
                         event?.let(subscriptions::add)
