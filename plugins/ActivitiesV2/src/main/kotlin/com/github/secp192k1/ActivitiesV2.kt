@@ -145,12 +145,12 @@ class ActivitiesV2 : Plugin() {
             val channelId = parts.getOrNull(2)?.toLongOrNull() ?: return@before
             val channel = StoreStream.getChannels().getChannel(channelId)
             val guildId = channel?.guildId ?: 0L
-            val voice = ChannelType.from(channel.type)?.isVoice ?: false
+            val voice = channel?.let { ChannelType.from(it.type)?.isVoice } == true
 
             Utils.threadPool.execute {
                 val name = ActivityApi.fetchAppName(appId) ?: "Activity"
-                ActivityApi.launch(channelId, guildId, appId, name, voice) {
-                    Utils.showToast("Failed to launch $name")
+                ActivityApi.launch(channelId, guildId, appId, name, voice) { reason ->
+                    Utils.showToast(if (reason != null) "Failed to launch $name: $reason" else "Failed to launch $name")
                 }
             }
         }

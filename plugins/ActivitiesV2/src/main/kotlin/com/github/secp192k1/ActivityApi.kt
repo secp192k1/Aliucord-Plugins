@@ -149,7 +149,7 @@ internal object ActivityApi {
         applicationId: String,
         applicationName: String,
         voice: Boolean = false,
-        onError: () -> Unit
+        onError: (reason: String?) -> Unit
     ) {
         Utils.threadPool.execute {
             val nonce = Utils.generateRNNonce().toString()
@@ -189,12 +189,13 @@ internal object ActivityApi {
                     nonce.let(pendingLaunches::remove)
                     val error = request.conn.errorStream?.let { IOUtils.readAsText(it) }.orEmpty()
                     logger.error("LAUNCH ${res.statusCode} ${res.statusMessage} body=$error", null)
-                    onError()
+                    val reason = runCatching { JSONObject(error).optString("message") }.getOrNull()?.ifEmpty { null }
+                    onError(reason)
                 }
             } catch (e: Throwable) {
                 nonce.let(pendingLaunches::remove)
                 logger.error("Failed to launch activity $applicationId", e)
-                onError()
+                onError(e.message)
             }
         }
     }

@@ -179,8 +179,8 @@ internal object ActivityPicker {
         }
 
         val name = activity.name ?: "Activity"
-        ActivityApi.launch(channelId, activity.guildId, activity.applicationId.toString(), name, voice = true) {
-            Utils.showToast("Failed to join $name")
+        ActivityApi.launch(channelId, activity.guildId, activity.applicationId.toString(), name, voice = true) { reason ->
+            Utils.showToast(if (reason != null) "Failed to join $name: $reason" else "Failed to join $name")
         }
     }
 
@@ -346,8 +346,8 @@ internal object ActivityPicker {
                 setPadding(8.dp, 12.dp, 8.dp, 12.dp)
                 setOnClickListener {
                     dialog.dismiss()
-                    ActivityApi.launch(channelId, guildId, entry.id, entry.name, voice) {
-                        Utils.showToast("Failed to launch ${entry.name}")
+                    ActivityApi.launch(channelId, guildId, entry.id, entry.name, voice) { reason ->
+                        Utils.showToast(if (reason != null) "Failed to launch ${entry.name}: $reason" else "Failed to launch ${entry.name}")
                     }
                 }
             }
