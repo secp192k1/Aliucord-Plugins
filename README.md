@@ -8,7 +8,6 @@ Based off the official template for a [Aliucord](https://github.com/Aliucord) pl
 |-|-|
 | [ActivitiesV2](plugins/ActivitiesV2) | Lets you play activities like Wordle |
 | [Caffeinate](plugins/Caffeinate) | Keeps the screen awake whenever a video is playing |
-| [QRCodeLogin](plugins/QRCodeLogin) | Attempts to fix login via QR Code |
 
 ## License
 
