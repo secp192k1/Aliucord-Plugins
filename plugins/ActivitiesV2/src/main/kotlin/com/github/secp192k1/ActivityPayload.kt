@@ -19,7 +19,7 @@ internal object ActivityPayload {
         <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}iframe{border:0;width:100%;height:100%;display:block}</style>
         </head>
         <body>
-        <iframe id="activity" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; camera; microphone; clipboard-write; clipboard-read; gamepad"></iframe>
+        <iframe id="activity" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; camera; microphone; clipboard-write; clipboard-read; gamepad; accelerometer; gyroscope"></iframe>
         <script>
         (function(){
         var frame=document.getElementById('activity');
