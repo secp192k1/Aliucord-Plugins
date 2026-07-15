@@ -9,6 +9,16 @@ Based off the official template for a [Aliucord](https://github.com/Aliucord) pl
 | [ActivitiesV2](plugins/ActivitiesV2) | Lets you play activities like Wordle |
 | [Caffeinate](plugins/Caffeinate) | Keeps the screen awake whenever a video is playing |
 
+## Usage
+
+Make sure to replace the placeholder `__plugin__` with the plugin name, for example `ActivitiesV2`
+
+| Purpose     | Command                                     | Example                                       |
+|-------------|---------------------------------------------|-----------------------------------------------|
+| **Build**   | `gradlew :plugins:__plugin__:make`          | `gradlew :plugins:ActivitiesV2:make`          |
+| **Install** | `gradlew :plugins:__plugin__:deployWithAdb` | `gradlew :plugins:ActivitiesV2:deployWithAdb` |
+| **Clear**   | `gradlew :plugins:__plugin__:clean`         | `gradlew :plugins:ActivitiesV2:clean`         |
+
 ## License
 
 This repo is based of the template ([Aliucord/plugins-template](https://github.com/Aliucord/plugins-template)), which is hereby
