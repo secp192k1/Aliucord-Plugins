@@ -4,11 +4,12 @@ Based off the official template for a [Aliucord](https://github.com/Aliucord) pl
 
 ## List of Plugins
 
-| Name                                           | Description                                        |
-|------------------------------------------------|----------------------------------------------------|
-| [ActivitiesV2](plugins/ActivitiesV2)           | Lets you play activities like Wordle               |
-| [Caffeinate](plugins/Caffeinate)               | Keeps the screen awake whenever a video is playing |
-| [LargerUploadsPerk](plugins/LargerUploadsPerk) | Support for 'Larger File Uploads' guild boost perk |
+| Name                                           | Description                                         |
+|------------------------------------------------|-----------------------------------------------------|
+| [ActivitiesV2](plugins/ActivitiesV2)           | Lets you play activities like Wordle                |
+| [Caffeinate](plugins/Caffeinate)               | Keeps the screen awake whenever a video is playing  |
+| [KeepVideoPlaying](plugins/KeepVideoPlaying)   | Keeps videos playing even when scrolling off screen |
+| [LargerUploadsPerk](plugins/LargerUploadsPerk) | Support for 'Larger File Uploads' guild boost perk  |
 
 ## Usage
 
