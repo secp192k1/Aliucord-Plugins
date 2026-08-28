@@ -11,6 +11,7 @@ Based off the official template for a [Aliucord](https://github.com/Aliucord) pl
 | [FixEditUpdates](plugins/FixEditUpdates)       | Fixes edited messages not updating                  |
 | [KeepVideoPlaying](plugins/KeepVideoPlaying)   | Keeps videos playing even when scrolling off screen |
 | [LargerUploadsPerk](plugins/LargerUploadsPerk) | Support for 'Larger File Uploads' guild boost perk  |
+| [Lupa](plugins/Lupa)                           | Adds searching through all of your dms              |
 
 ## Usage
 
