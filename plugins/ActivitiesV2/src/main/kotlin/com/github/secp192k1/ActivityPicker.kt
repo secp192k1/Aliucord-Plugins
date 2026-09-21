@@ -6,7 +6,6 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.util.LruCache
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -48,7 +47,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 internal object ActivityPicker {
     private val logger = Logger("ActivitiesV2")
-    private val tabStringId = View.generateViewId()
     private val iconCache = object : LruCache<String, Bitmap>(4 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
@@ -73,7 +71,7 @@ internal object ActivityPicker {
                             fragment.r += `WidgetChatInputAttachments$configureFlexInputContentPages$1$page$1`(
                                 fragment.requireContext(),
                                 R.e.ic_controller_24dp,
-                                tabStringId
+                                R.h.activity
                             )
                         }
                     } catch (e: Throwable) {
@@ -83,13 +81,15 @@ internal object ActivityPicker {
             }
         )
 
-        patcher.before<TabLayout.Tab>(
-            "setContentDescription",
-            Int::class.javaPrimitiveType!!
-        ) { (param, id: Int) ->
-            if (id == tabStringId) {
-                tag = TAB_TAG
-                param.result = setContentDescription("Activities")
+        patcher.after<b.b.a.a.`a$e`>("invoke") {
+            val tabLayout = `this$0`.l ?: return@after
+            val pages = (`$flexInputFragment` as FlexInputFragment).r
+            val offset = tabLayout.tabCount - pages.size
+
+            pages.forEachIndexed { index, page ->
+                if (page.icon == R.e.ic_controller_24dp && page.contentDesc == R.h.activity) {
+                    tabLayout.getTabAt(offset + index)?.setTag(TAB_TAG)?.setContentDescription("Activities")
+                }
             }
         }
 
