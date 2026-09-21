@@ -1,10 +1,13 @@
-version = "1.2.2"
+version = "1.2.3"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.2.3
+        * Fix crashing when opening media picker on older android phones
+
         # 1.2.2
         * Use real locale for activities
         * Support opening external links inside activities
