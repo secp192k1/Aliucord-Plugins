@@ -9,6 +9,7 @@ Based off the official template for a [Aliucord](https://github.com/Aliucord) pl
 | [ActivitiesV2](plugins/ActivitiesV2)           | Lets you play activities like Wordle                    |
 | [Caffeinate](plugins/Caffeinate)               | Keeps the screen awake whenever a video is playing      |
 | [FixEditUpdates](plugins/FixEditUpdates)       | Fixes edited messages not updating                      |
+| [ForceSystemFont](plugins/ForceSystemFont)     | Use the phone's system font instead                     |
 | [KeepVideoPlaying](plugins/KeepVideoPlaying)   | Keeps videos playing even when scrolling off screen     |
 | [LargerUploadsPerk](plugins/LargerUploadsPerk) | Support for 'Larger File Uploads' guild boost perk      |
 | [Lupa](plugins/Lupa)                           | Adds searching through all of your dms                  |
