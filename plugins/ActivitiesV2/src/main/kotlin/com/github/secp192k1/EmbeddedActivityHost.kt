@@ -158,7 +158,7 @@ internal object EmbeddedActivityHost {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             ServiceWorkerController.getInstance().setServiceWorkerClient(object : ServiceWorkerClient() {
                 override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
-                    logger.verbose("WORKER[${request.method}] ${request.url}")
+                    logger.verbose("WORKER[${request.method}] ${request.url.redacted()}")
                     return null
                 }
             })
@@ -171,7 +171,7 @@ internal object EmbeddedActivityHost {
 
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                logger.verbose("HTTP[${request.method}] ${request.url}")
+                logger.verbose("HTTP[${request.method}] ${request.url.redacted()}")
                 return null
             }
 
@@ -180,17 +180,17 @@ internal object EmbeddedActivityHost {
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                logger.warn("Failed ${request.method} ${request.url}: ${error.errorCode} ${error.description}")
+                logger.warn("Failed ${request.method} ${request.url.redacted()}: ${error.errorCode} ${error.description}")
                 if (request.url.toString() == activityUrl) onLoadFailed(error.toString())
             }
 
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
-                logger.warn("HTTP ${errorResponse.statusCode} for ${request.method} ${request.url}")
+                logger.warn("HTTP ${errorResponse.statusCode} for ${request.method} ${request.url.redacted()}")
                 if (request.url.toString() == activityUrl) onLoadFailed("HTTP ${errorResponse.statusCode}")
             }
 
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-                logger.warn("SSL error ${error.primaryError} for ${error.url}, cancelling")
+                logger.warn("SSL error ${error.primaryError} for ${error.url?.let { Uri.parse(it).redacted() }}, cancelling")
                 super.onReceivedSslError(view, handler, error)
             }
 
@@ -235,6 +235,9 @@ internal object EmbeddedActivityHost {
         }, "AliucordRPC")
         return web
     }
+
+    // Query strings carry OAuth codes and API keys, keep them out of logs people share
+    private fun Uri.redacted(): Uri = buildUpon().clearQuery().fragment(null).build()
 
     fun updateParticipants(instanceId: String, userIds: List<Long>) {
         // Queued behind a pending open() on the same looper, so a just opened session already exists here
