@@ -26,13 +26,17 @@ internal object ActivityData {
             .put("voice_states", voiceStates(channel))
             .put("messages", JSONArray())
 
+        logger.info("GET_CHANNEL: id=${channel.id} type=${channel.type} guild=${channel.guildId}")
         return json
     }
 
     private fun resolveChannel(session: ActivitySession, args: JSONObject): Channel {
         val requestedId = args.optString("channel_id").toLongOrNull() ?: return session.channel
         if (requestedId == session.channel.id) return session.channel
-        return StoreStream.getChannels().getChannel(requestedId) ?: session.channel
+        val channel = StoreStream.getChannels().getChannel(requestedId)
+        if (channel == null) logger.warn("Channel $requestedId not cached, using session channel ${session.channel.id}")
+        else logger.info("Using cached session channel $requestedId (${session.channel.id})")
+        return channel ?: session.channel
     }
 
     fun participants(userIds: List<Long>): JSONObject {
@@ -40,10 +44,15 @@ internal object ActivityData {
         val users = StoreStream.getUsers().users
 
         for (id in userIds) {
-            val user = users[id] ?: continue
+            val user = users[id]
+            if (user == null) {
+                logger.warn("User $id not cached, left out of participants")
+                continue
+            }
             list.put(userJson(user).put("flags", 0))
         }
 
+        logger.info("Participants payload: ${list.length()} of ${userIds.size} users")
         return JSONObject().put("participants", list)
     }
 
@@ -53,8 +62,12 @@ internal object ActivityData {
         try {
             val channel = resolveChannel(session, args)
             StoreStream.getPermissions().permissionsByChannel[channel.id]?.let { permissions = it }
-        } catch (_: Throwable) { }
+                ?: logger.warn("Permissions for channel ${channel.id} not cached")
+        } catch (e: Throwable) {
+            logger.warn("Failed to resolve channel permissions", e)
+        }
 
+        logger.info("GET_CHANNEL_PERMISSIONS: $permissions")
         return JSONObject().put("permissions", permissions.toString())
     }
 
@@ -67,7 +80,11 @@ internal object ActivityData {
                 .getForChannel(channel.guildId, channel.id)
 
             for ((userId, state) in voiceStates) {
-                val user = users[userId] ?: continue
+                val user = users[userId]
+                if (user == null) {
+                    logger.warn("Voice state for user $userId not cached, left out of voice_states")
+                    continue
+                }
                 val mute = state.getField("mute")
 
                 states.put(
@@ -84,6 +101,7 @@ internal object ActivityData {
                         .put("volume", 100)
                 )
             }
+            logger.info("Voice states of channel ${channel.id}: ${states.length()} of ${voiceStates.size}")
         } catch (e: Throwable) {
             logger.error("Failed to build voice states", e)
         }

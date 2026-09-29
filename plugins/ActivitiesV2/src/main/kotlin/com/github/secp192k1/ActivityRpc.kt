@@ -27,7 +27,13 @@ internal class ActivityRpc(
 
         when (RpcOpcode.from(tuple.optInt(0, -1))) {
             RpcOpcode.HANDSHAKE -> {
-                clientId = tuple.optJSONObject(1)?.optString("client_id").orEmpty()
+                val handshake = tuple.optJSONObject(1)
+                clientId = handshake?.optString("client_id").orEmpty()
+                logger.info("RPC handshake: $handshake")
+                if (clientId != session.applicationId) {
+                    logger.warn("Handshake client_id '$clientId' differs from application ${session.applicationId}")
+                }
+                logger.info("RPC -> DISPATCH READY")
                 frame(
                     JSONObject().put("cmd", "DISPATCH").put("evt", "READY").put("nonce", JSONObject.NULL)
                         .put("data", JSONObject().put("v", 1).put("config", JSONObject()
@@ -38,22 +44,30 @@ internal class ActivityRpc(
                 )
             }
             RpcOpcode.FRAME -> {
-                val payload = tuple.optJSONObject(1) ?: return
+                val payload = tuple.optJSONObject(1) ?: return logger.warn("RPC frame without payload: ${json.take(500)}")
                 val command = payload.optString("cmd")
                 val nonce = payload.opt("nonce")
                 val event = payload.optString("evt").ifEmpty { null }
                 val args = payload.optJSONObject("args") ?: JSONObject()
-                if (command.isEmpty()) return
-                when (RpcCommand.from(command)) {
+                if (command.isEmpty()) return logger.warn("RPC frame without cmd: ${payload.toString().take(500)}")
+                val rpcCommand = RpcCommand.from(command)
+                if (rpcCommand != RpcCommand.CAPTURE_LOG && rpcCommand != RpcCommand.SEND_ANALYTICS_EVENT) {
+                    logger.info("RPC <- $command nonce=$nonce${event?.let { " evt=$it" }.orEmpty()}")
+                }
+                when (rpcCommand) {
                     RpcCommand.AUTHORIZE -> Utils.threadPool.execute { onResult(command, nonce, ActivityApi.authorize(session, clientId, args)) }
                     RpcCommand.AUTHENTICATE -> Utils.threadPool.execute { onResult(command, nonce, ActivityApi.authenticate(args.optString("access_token"))) }
                     RpcCommand.GET_CHANNEL -> reply(command, nonce, ActivityData.channel(session, args))
                     RpcCommand.GET_CHANNEL_PERMISSIONS -> reply(command, nonce, ActivityData.permissions(session, args))
                     RpcCommand.ENCOURAGE_HW_ACCELERATION -> reply(command, nonce, JSONObject().put("enabled", true))
                     RpcCommand.SUBSCRIBE -> {
+                        if (event == null) logger.warn("SUBSCRIBE without evt, args=$args")
                         event?.let(subscriptions::add)
                         reply(command, nonce, JSONObject().put("evt", event))
-                        if (event == PARTICIPANTS_UPDATE) lastParticipants?.let { dispatch(PARTICIPANTS_UPDATE, it) }
+                        if (event == PARTICIPANTS_UPDATE) lastParticipants?.let {
+                            logger.info("Replaying last participants to new $PARTICIPANTS_UPDATE subscriber")
+                            dispatch(PARTICIPANTS_UPDATE, it)
+                        }
                     }
                     RpcCommand.UNSUBSCRIBE -> {
                         event?.let(subscriptions::remove)
@@ -63,9 +77,14 @@ internal class ActivityRpc(
                         val activity = args.optJSONObject("activity") ?: JSONObject()
                         if (!activity.has("name")) activity.put("name", "")
                         if (!activity.has("type")) activity.put("type", ActivityType.PLAYING.value)
+                        logger.info("SET_ACTIVITY echoed, presence not applied: type=${activity.optInt("type")} details=${activity.optString("details")} state=${activity.optString("state")}")
                         reply(command, nonce, activity)
                     }
-                    RpcCommand.USER_SETTINGS_GET_LOCALE -> reply(command, nonce, JSONObject().put("locale", Locale.getDefault().toLanguageTag()))
+                    RpcCommand.USER_SETTINGS_GET_LOCALE -> {
+                        val locale = Locale.getDefault().toLanguageTag()
+                        logger.info("Reporting locale $locale")
+                        reply(command, nonce, JSONObject().put("locale", locale))
+                    }
                     RpcCommand.GET_QUEST -> reply(command, nonce, JSONObject().put("quest", JSONObject.NULL))
                     RpcCommand.OPEN_EXTERNAL_LINK -> {
                         EmbeddedActivityHost.openExternalLink(args.optString("url")) { opened ->
@@ -80,7 +99,7 @@ internal class ActivityRpc(
                     }
                 }
             }
-            null -> logger.warn("Unknown RPC opcode: ${tuple.optInt(0, -1)}")
+            null -> logger.warn("Unknown RPC opcode: ${tuple.optInt(0, -1)} payload=${tuple.opt(1)}")
         }
     }
 
@@ -105,12 +124,14 @@ internal class ActivityRpc(
         if (PARTICIPANTS_UPDATE in subscriptions) dispatch(PARTICIPANTS_UPDATE, data)
     }
 
-    private fun dispatch(event: String, data: JSONObject) =
+    private fun dispatch(event: String, data: JSONObject) {
+        logger.info("RPC -> DISPATCH $event")
         frame(JSONObject()
             .put("cmd", "DISPATCH")
             .put("evt", event)
             .put("nonce", JSONObject.NULL)
             .put("data", data))
+    }
 
     private fun onResult(cmd: String, nonce: Any?, result: ApiResult) = when (result) {
         is ApiResult.OK -> reply(cmd, nonce, result.data)
@@ -128,7 +149,8 @@ internal class ActivityRpc(
             .put("nonce", nonce ?: JSONObject.NULL)
             .put("data", data))
 
-    private fun replyError(cmd: String, nonce: Any?, code: Int, message: String) =
+    private fun replyError(cmd: String, nonce: Any?, code: Int, message: String) {
+        logger.warn("RPC -> $cmd error $code: $message (nonce=$nonce)")
         frame(JSONObject()
             .put("cmd", cmd)
             .put("evt", "ERROR")
@@ -136,4 +158,5 @@ internal class ActivityRpc(
             .put("data", JSONObject()
                 .put("code", code)
                 .put("message", message)))
+    }
 }

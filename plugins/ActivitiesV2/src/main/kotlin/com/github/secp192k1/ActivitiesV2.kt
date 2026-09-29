@@ -1,6 +1,7 @@
 package com.github.secp192k1
 
 import android.content.Context
+import android.os.Build
 import com.aliucord.Utils
 import com.aliucord.annotations.AliucordPlugin
 import com.aliucord.api.GatewayAPI
@@ -83,11 +84,14 @@ class ActivitiesV2 : Plugin() {
     }
 
     override fun start(context: Context) {
+        logger.info("Starting v${manifest.version} on Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})")
+        logger.info("Settings: promptForPermissions=${Config.promptForPermissions} webContentsDebugging=${Config.webContentsDebugging}")
         EmbeddedActivityHost.preload(context)
         ActivityPicker.patch(patcher)
         ActivityApi.trackInteractionEvents()
         EmbeddedActivityHost.onLeave = { session ->
-            launched.remove(session.rawInstanceId)
+            val tracked = launched.remove(session.rawInstanceId)
+            logger.info("Session ended: ${session.applicationId} instance=${session.rawInstanceId} tracked=$tracked")
             dispatchLeave(session)
         }
         patcher.before<GatewaySocket>(
@@ -103,6 +107,7 @@ class ActivitiesV2 : Plugin() {
 
         GatewayAPI.onRawEvent(V2) { raw -> thread.execute { handleV2Update(raw) } }
         patchLaunchMessages()
+        logger.info("Started")
     }
 
     // Backport of the launch messages (type 23)
@@ -139,11 +144,13 @@ class ActivitiesV2 : Plugin() {
             val customId = data.customId ?: return@before
             if (!customId.startsWith("$CUSTOM_ID_PREFIX:")) return@before
             param.result = null
+            logger.info("Play button pressed: custom_id=$customId")
 
             val parts = customId.split(':')
-            val appId = parts.getOrNull(1) ?: return@before
-            val channelId = parts.getOrNull(2)?.toLongOrNull() ?: return@before
+            val appId = parts.getOrNull(1) ?: return@before logger.warn("Malformed custom_id, no application id: $customId")
+            val channelId = parts.getOrNull(2)?.toLongOrNull() ?: return@before logger.warn("Malformed custom_id, no channel id: $customId")
             val channel = StoreStream.getChannels().getChannel(channelId)
+            if (channel == null) logger.warn("Channel $channelId not cached, launching without guild id")
             val guildId = channel?.guildId ?: 0L
             val voice = channel?.let { ChannelType.from(it.type)?.isVoice } == true
 
@@ -167,7 +174,8 @@ class ActivitiesV2 : Plugin() {
                 msg.p()?.b()
             )) return
 
-            applyLaunchCard(msg, msg.b(), getField(msg, "channelId") as? Long ?: return)
+            val channelId = getField(msg, "channelId") as? Long ?: return logger.warn("Launch message without channel id, not rendering card")
+            applyLaunchCard(msg, msg.b(), channelId)
         } catch (e: Throwable) {
             logger.error("Failed to patch launch message", e)
         }
@@ -187,12 +195,14 @@ class ActivitiesV2 : Plugin() {
         val appId = application?.let { getField(it, "id") as? Long }?.toString()
 
         if (appId == null) {
+            logger.warn("Launch message in channel $channelId has no application, using plain text")
             // Fallback to a plain text body so it's at least visible
             setField(msg, "content", "Started an activity")
             return
         }
 
         val appName = getField(application, "name") as? String ?: "Activity"
+        logger.info("Rendering launch card: app=$appId name=$appName channel=$channelId")
 
         val embedJson = JSONObject()
             .put("type", "rich")
@@ -229,11 +239,13 @@ class ActivitiesV2 : Plugin() {
 
     private fun handleV2Update(raw: String) {
         try {
-            val instance = JSONObject(raw).optJSONObject("d") ?: return
-            val location = instance.optJSONObject("location") ?: return
+            val instance = JSONObject(raw).optJSONObject("d") ?: return logger.warn("$V2 without payload: ${raw.take(500)}")
+            val location = instance.optJSONObject("location") ?: return logger.warn("$V2 without location: ${instance.toString().take(500)}")
             val channelId = location.optString("channel_id")
             val applicationId = instance.optString("application_id")
-            if (channelId.isEmpty() || applicationId.isEmpty()) return
+            if (channelId.isEmpty() || applicationId.isEmpty()) {
+                return logger.warn("$V2 missing channel_id or application_id: ${instance.toString().take(500)}")
+            }
 
             val channel = StoreStream.getChannels().getChannel(channelId.toLong())
             val userIds = mutableListOf<String>()
@@ -263,8 +275,13 @@ class ActivitiesV2 : Plugin() {
             StoreStream.getGatewaySocket().handleDispatch(V1, update)
 
             val instanceId = instance.optString("instance_id")
-            if (channel != null && userIds.contains(StoreStream.getUsers().me.id.toString()) && launched.add(instanceId)) {
+            val includesMe = userIds.contains(StoreStream.getUsers().me.id.toString())
+            logger.info("$V2: app=$applicationId instance=$instanceId channel=$channelId participants=${userIds.size} includesMe=$includesMe")
+            if (includesMe && channel == null) logger.warn("Channel $channelId not cached, cannot open $instanceId")
+
+            if (channel != null && includesMe && launched.add(instanceId)) {
                 val compositeInstanceId = instance.optString("composite_instance_id").ifEmpty { instanceId }
+                logger.info("Joined instance $instanceId, opening activity")
 
                 Utils.mainThread.post {
                     if (!EmbeddedActivityHost.open(
@@ -275,7 +292,10 @@ class ActivitiesV2 : Plugin() {
                             channel,
                             location.optString("id"),
                         )
-                    ) launched.remove(instanceId)
+                    ) {
+                        logger.warn("Failed to open instance $instanceId, will retry on next update")
+                        launched.remove(instanceId)
+                    }
                 }
             }
 
@@ -288,6 +308,7 @@ class ActivitiesV2 : Plugin() {
 
     private fun dispatchLeave(session: ActivitySession) {
         try {
+            logger.info("Dispatching empty $V1 for app=${session.applicationId} channel=${session.channel.id}")
             val v1 = JSONObject()
                 .put("channel_id", session.channel.id.toString())
                 .put("users", JSONArray())

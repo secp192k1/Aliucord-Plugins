@@ -73,6 +73,7 @@ internal object ActivityPicker {
                                 R.e.ic_controller_24dp,
                                 R.h.activity
                             )
+                            logger.info("Added activities page to attachments, pages=${fragment.r.size}")
                         }
                     } catch (e: Throwable) {
                         logger.error("Failed to add activities tab", e)
@@ -88,7 +89,11 @@ internal object ActivityPicker {
 
             pages.forEachIndexed { index, page ->
                 if (page.icon == R.e.ic_controller_24dp && page.contentDesc == R.h.activity) {
-                    tabLayout.getTabAt(offset + index)?.setTag(TAB_TAG)?.setContentDescription("Activities")
+                    val tab = tabLayout.getTabAt(offset + index)
+                    if (tab == null) {
+                        logger.warn("No tab at ${offset + index} for activities page, tabs=${tabLayout.tabCount}")
+                    }
+                    tab?.setTag(TAB_TAG)?.setContentDescription("Activities")
                 }
             }
         }
@@ -111,6 +116,7 @@ internal object ActivityPicker {
             val tab = tabLayout.getTabAt(index)
 
             if (tab?.tag == TAB_TAG && tabLayout.selectedTabPosition == 0) {
+                logger.info("Swallowed page selection of activities tab")
                 val parentFragment = this.a.parentFragment as FlexInputFragment
                 parentFragment.s.onContentDialogDismissed(false)
                 param.result = null
@@ -123,6 +129,7 @@ internal object ActivityPicker {
         ) { (param, tab: TabLayout.Tab) ->
             if (tab.tag != TAB_TAG) return@before
 
+            logger.info("Activities tab selected")
             val parentFragment = this.a.parentFragment as FlexInputFragment
             parentFragment.s.onContentDialogDismissed(false)
             param.result = null
@@ -134,6 +141,7 @@ internal object ActivityPicker {
             WidgetCallFullscreenViewModel.Event::class.java
         ) { (param, event: WidgetCallFullscreenViewModel.Event) ->
             if (event !is WidgetCallFullscreenViewModel.Event.ShowActivitiesDesktopOnlyDialog) return@before
+            logger.info("Replacing desktop-only activities dialog with voice activity join")
             param.result = null
             joinVoiceActivity()
         }
@@ -167,18 +175,20 @@ internal object ActivityPicker {
 
     private fun joinVoiceActivity() {
         val channelId = StoreStream.getVoiceChannelSelected().selectedVoiceChannelId
-        if (channelId <= 0L) return
+        if (channelId <= 0L) return logger.warn("No voice channel selected, cannot join activity")
 
         val stores = StoreStream.`access$getCollector$cp`().value as StoreStream
-        val activity = stores.`getEmbeddedActivities$app_productionGoogleRelease`()
-            .embeddedActivities[channelId]?.values?.firstOrNull()
+        val running = stores.`getEmbeddedActivities$app_productionGoogleRelease`().embeddedActivities[channelId]?.values
+        val activity = running?.firstOrNull()
 
         if (activity == null) {
+            logger.warn("No activity running in voice channel $channelId")
             Utils.showToast("No activity running in this channel")
             return
         }
 
         val name = activity.name ?: "Activity"
+        logger.info("Joining $name (${activity.applicationId}) in voice channel $channelId, running=${running.size}")
         ActivityApi.launch(channelId, activity.guildId, activity.applicationId.toString(), name, voice = true) { reason ->
             Utils.showToast(if (reason != null) "Failed to join $name: $reason" else "Failed to join $name")
         }
@@ -191,27 +201,39 @@ internal object ActivityPicker {
         val channelId = channel.id
         val voice = ChannelType.from(channel.type)?.isVoice ?: false
 
-        logger.info("Opening picker for channel name=${channel.name} type=${channel.type} isVoice=$voice")
+        logger.info("Opening picker for channel name=${channel.name} id=$channelId guild=$guildId type=${channel.type} isVoice=$voice")
 
         if (channelId == 0L) {
+            logger.warn("No channel selected, not opening picker")
             Utils.showToast("No channel selected")
             return
         }
 
         entriesCache[guildId]?.takeIf { System.currentTimeMillis() - it.fetchedAt < CACHE_TTL_MS }?.let {
+            logger.info("Using cached activities of guild $guildId: ${it.entries.size} entries")
             showGrid(channelId, guildId, voice, it.entries)
             return
         }
 
+        logger.info("Fetching activities of guild $guildId")
         Utils.threadPool.execute {
             val entries = fetchEntries(guildId)
             if (entries != null) entriesCache[guildId] = CachedEntries(entries, System.currentTimeMillis())
 
             val toShow = entries ?: entriesCache[guildId]?.entries
+            if (entries == null && toShow != null) {
+                logger.warn("Fetch failed, showing ${toShow.size} stale cached activities of guild $guildId")
+            }
             Utils.mainThread.post {
                 when {
-                    toShow == null -> Utils.showToast("Failed to load activities")
-                    toShow.isEmpty() -> Utils.showToast("No activities available")
+                    toShow == null -> {
+                        logger.warn("Fetch failed and nothing cached for guild $guildId")
+                        Utils.showToast("Failed to load activities")
+                    }
+                    toShow.isEmpty() -> {
+                        logger.warn("No activities available in guild $guildId")
+                        Utils.showToast("No activities available")
+                    }
                     else -> showGrid(channelId, guildId, voice, toShow)
                 }
             }
@@ -237,11 +259,15 @@ internal object ActivityPicker {
             false
         }
 
-        if (!isGuildValid && !isShelfValid) return null
+        if (!isGuildValid && !isShelfValid) {
+            logger.warn("Guild application index and activity shelf both failed for guild $guildId")
+            return null
+        }
 
         for (entry in guildEntries) if (seen.add(entry.id)) entries.add(entry)
         for (entry in shelfEntries) if (seen.add(entry.id)) entries.add(entry)
 
+        logger.info("Activities of guild $guildId: guild=${guildEntries.size} (ok=$isGuildValid) shelf=${shelfEntries.size} (ok=$isShelfValid) merged=${entries.size}")
         return entries
     }
 
@@ -253,7 +279,10 @@ internal object ActivityPicker {
                 return false
             }
 
-            val apps = JSONObject(res.text()).optJSONArray("applications") ?: return true
+            val apps = JSONObject(res.text()).optJSONArray("applications") ?: run {
+                logger.warn("Application index of guild $guildId has no applications")
+                return true
+            }
             for (i in 0 until apps.length()) {
                 val app = apps.getJSONObject(i)
                 if (!app.has("embedded_activity_config")) continue
@@ -261,6 +290,7 @@ internal object ActivityPicker {
                 if (seen.add(entry.id)) entries.add(entry)
             }
 
+            logger.info("Guild $guildId: ${entries.size} activities among ${apps.length()} applications")
             return true
         } catch (e: Throwable) {
             logger.error("Failed to fetch guild activities", e)
@@ -290,10 +320,15 @@ internal object ActivityPicker {
             val activities = shelf.optJSONArray("activities")
             if (activities != null) for (i in 0 until activities.length()) {
                 val appId = activities.getJSONObject(i).optString("application_id")
-                val app = appsById[appId] ?: continue
+                val app = appsById[appId]
+                if (app == null) {
+                    logger.warn("Shelf activity $appId has no matching application, skipped")
+                    continue
+                }
                 if (seen.add(appId)) entries.add(entryFrom(app))
             }
 
+            logger.info("Activity shelf of guild $guildId: ${entries.size} of ${activities?.length() ?: 0} activities, ${appsById.size} applications")
             return true
         } catch (e: Throwable) {
             logger.error("Failed to fetch activities shelf", e)
@@ -317,7 +352,8 @@ internal object ActivityPicker {
         Utils.threadPool.execute {
             try {
                 val bitmap = URL("https://cdn.discordapp.com/app-icons/$key.png?size=128")
-                    .openStream().use(BitmapFactory::decodeStream) ?: return@execute
+                    .openStream().use(BitmapFactory::decodeStream)
+                    ?: return@execute logger.warn("Failed to decode icon of ${entry.id}")
 
                 iconCache.put(key, bitmap)
                 image.post { image.setImageBitmap(bitmap) }
@@ -328,7 +364,8 @@ internal object ActivityPicker {
     }
 
     private fun showGrid(channelId: Long, guildId: Long, voice: Boolean, entries: List<ActivityEntry>) {
-        val activity = EmbeddedActivityHost.hostActivity() ?: return
+        val activity = EmbeddedActivityHost.hostActivity() ?: return logger.warn("No host activity, cannot show activity picker")
+        logger.info("Showing activity picker: ${entries.size} entries channel=$channelId guild=$guildId voice=$voice")
 
         val bg = ColorCompat.getThemedColor(activity, R.b.colorBackgroundPrimary)
         val textColor = ColorCompat.getThemedColor(activity, R.b.colorHeaderPrimary)
@@ -345,6 +382,7 @@ internal object ActivityPicker {
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(8.dp, 12.dp, 8.dp, 12.dp)
                 setOnClickListener {
+                    logger.info("Picked ${entry.name} (${entry.id})")
                     dialog.dismiss()
                     ActivityApi.launch(channelId, guildId, entry.id, entry.name, voice) { reason ->
                         Utils.showToast(if (reason != null) "Failed to launch ${entry.name}: $reason" else "Failed to launch ${entry.name}")

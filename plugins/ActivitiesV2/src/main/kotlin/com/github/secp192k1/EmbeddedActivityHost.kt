@@ -1,5 +1,6 @@
 package com.github.secp192k1
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
@@ -7,17 +8,22 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.ServiceWorkerClient
 import android.webkit.ServiceWorkerController
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -27,6 +33,7 @@ import android.webkit.WebViewClient
 import android.widget.LinearLayout
 import com.aliucord.Logger
 import com.aliucord.Utils
+import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.discord.api.channel.Channel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.lang.ref.WeakReference
@@ -50,6 +57,7 @@ internal object EmbeddedActivityHost {
         (ctx.applicationContext as? Application)?.registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {
                 override fun onActivityResumed(activity: Activity) {
+                    logger.info("Activity resumed: ${activity.javaClass.name}")
                     currentActivity = WeakReference(activity)
                 }
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -58,14 +66,23 @@ internal object EmbeddedActivityHost {
                 override fun onActivityStopped(activity: Activity) {}
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
                 override fun onActivityDestroyed(activity: Activity) {
-                    if (dialog != null && hostRef.get() === activity) closeCurrent()
+                    if (dialog != null && hostRef.get() === activity) {
+                        logger.warn("Host ${activity.javaClass.name} destroyed while an activity is open, closing it")
+                        closeCurrent()
+                    }
                 }
             }
-        )
+        ) ?: logger.warn("No Application context, host activity tracking disabled")
 
         Utils.mainThread.post {
             try {
-                WebView(ctx.applicationContext).destroy()
+                val web = WebView(ctx.applicationContext)
+                logger.info("WebView user agent: ${web.settings.userAgentString}")
+                web.destroy()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val provider = WebView.getCurrentWebViewPackage()
+                    logger.info("WebView provider: ${provider?.packageName} ${provider?.versionName}")
+                }
             } catch (e: Throwable) {
                 logger.error("Failed to preload WebView", e)
             }
@@ -76,10 +93,16 @@ internal object EmbeddedActivityHost {
         val tracked = currentActivity.get()
         if (tracked != null && !tracked.isFinishing && !tracked.isDestroyed) return tracked
         val fallback = Utils.appActivity
-        return if (!fallback.isFinishing && !fallback.isDestroyed) fallback else null
+        if (!fallback.isFinishing && !fallback.isDestroyed) {
+            logger.info("Tracked ${tracked?.javaClass?.name} unusable, falling back to ${fallback.javaClass.name}")
+            return fallback
+        }
+        logger.warn("No usable host activity: tracked=${tracked?.javaClass?.name} fallbackFinishing=${fallback.isFinishing} fallbackDestroyed=${fallback.isDestroyed}")
+        return null
     }
 
     fun open(appId: String, inst: String, rawInst: String, launch: String, channel: Channel, loc: String): Boolean {
+        logger.info("Opening activity $appId: instance=$rawInst composite=$inst launch=$launch channel=${channel.id} location=$loc")
         closeCurrent()
 
         val activity = hostActivity()
@@ -94,6 +117,7 @@ internal object EmbeddedActivityHost {
         activityUrl = ActivityApi.buildUrl(session)
         savedOrientation = activity.requestedOrientation
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        logger.info("Locked orientation of ${activity.javaClass.name}, saved=$savedOrientation")
 
         val web = createWebView(activity, session)
         webView = web
@@ -122,6 +146,7 @@ internal object EmbeddedActivityHost {
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun createWebView(activity: Activity, session: ActivitySession): WebView {
+        logger.info("Creating WebView: webContentsDebugging=${Config.webContentsDebugging} promptForPermissions=${Config.promptForPermissions}")
         val web = WebView(activity)
         web.settings.apply {
             javaScriptEnabled = true
@@ -150,12 +175,28 @@ internal object EmbeddedActivityHost {
                 return null
             }
 
+            override fun onPageFinished(view: WebView, url: String?) {
+                logger.info("Host page loaded: $url")
+            }
+
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                logger.warn("Failed ${request.method} ${request.url}: ${error.errorCode} ${error.description}")
                 if (request.url.toString() == activityUrl) onLoadFailed(error.toString())
             }
 
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+                logger.warn("HTTP ${errorResponse.statusCode} for ${request.method} ${request.url}")
                 if (request.url.toString() == activityUrl) onLoadFailed("HTTP ${errorResponse.statusCode}")
+            }
+
+            override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                logger.warn("SSL error ${error.primaryError} for ${error.url}, cancelling")
+                super.onReceivedSslError(view, handler, error)
+            }
+
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                logger.warn("Renderer gone: didCrash=${detail.didCrash()} priority=${detail.rendererPriorityAtExit()}")
+                return super.onRenderProcessGone(view, detail)
             }
         }
 
@@ -167,6 +208,9 @@ internal object EmbeddedActivityHost {
 
             override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
                 logger.verbose("[activity] ${msg.message()}")
+                if (msg.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                    logger.warn("[activity] ${msg.message()} (${msg.sourceId()}:${msg.lineNumber()})")
+                }
                 return true
             }
         }
@@ -191,6 +235,7 @@ internal object EmbeddedActivityHost {
     fun updateParticipants(instanceId: String, userIds: List<Long>) {
         if (session?.rawInstanceId != instanceId) return
 
+        logger.info("Participants of instance $instanceId: $userIds")
         rpc?.updateParticipants(ActivityData.participants(userIds))
         Utils.mainThread.post {
             val row = participantsRow ?: return@post
@@ -202,10 +247,12 @@ internal object EmbeddedActivityHost {
         val activity = hostActivity()
 
         if (activity == null || !(url.startsWith("https://") || url.startsWith("http://"))) {
+            logger.warn("Refusing external link '$url', hasHostActivity=${activity != null}")
             onResult(false)
             return
         }
 
+        logger.info("Asking to open external link $url")
         Utils.mainThread.post {
             AlertDialog.Builder(activity)
                 .setTitle("Leaving Discord")
@@ -213,13 +260,17 @@ internal object EmbeddedActivityHost {
                 .setPositiveButton("Open") { _, _ ->
                     try {
                         activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        logger.info("Opened external link $url")
                         onResult(true)
                     } catch (e: Throwable) {
                         logger.error("Failed to open external link", e)
                         onResult(false)
                     }
                 }
-                .setNegativeButton("Cancel") { _, _ -> onResult(false) }
+                .setNegativeButton("Cancel") { _, _ ->
+                    logger.info("External link cancelled")
+                    onResult(false)
+                }
                 .setOnCancelListener { onResult(false) }
                 .setCancelable(false)
                 .show()
@@ -228,14 +279,18 @@ internal object EmbeddedActivityHost {
 
     private fun handlePermissionRequest(request: PermissionRequest) {
         val resources = request.resources
+        logger.info("Permission request from ${request.origin}: ${resources.joinToString()}")
+        warnMissingAppPermissions(resources)
 
         if (!Config.promptForPermissions || resources.isEmpty()) {
+            logger.info("Granting without prompt: ${resources.joinToString()}")
             request.grant(resources)
             return
         }
 
         val activity = hostRef.get() ?: hostActivity()
         if (activity == null || activity.isDestroyed) {
+            logger.warn("No host activity to prompt with, denying ${resources.joinToString()}")
             request.deny()
             return
         }
@@ -252,11 +307,32 @@ internal object EmbeddedActivityHost {
             AlertDialog.Builder(activity)
                 .setTitle("Activity permission")
                 .setMessage("This activity wants to use your $labels.")
-                .setPositiveButton("Allow") { _, _ -> request.grant(resources) }
-                .setNegativeButton("Deny") { _, _ -> request.deny() }
+                .setPositiveButton("Allow") { _, _ ->
+                    logger.info("User allowed $labels")
+                    request.grant(resources)
+                }
+                .setNegativeButton("Deny") { _, _ ->
+                    logger.info("User denied $labels")
+                    request.deny()
+                }
                 .setOnCancelListener { request.deny() }
                 .setCancelable(false)
                 .show()
+        }
+    }
+
+    // A WebView grant is useless if Discord itself lacks the runtime permission
+    private fun warnMissingAppPermissions(resources: Array<String>) {
+        for (resource in resources) {
+            val permission = when (resource) {
+                PermissionRequest.RESOURCE_AUDIO_CAPTURE -> Manifest.permission.RECORD_AUDIO
+                PermissionRequest.RESOURCE_VIDEO_CAPTURE -> Manifest.permission.CAMERA
+                else -> continue
+            }
+            val state = Utils.appContext.checkPermission(permission, Process.myPid(), Process.myUid())
+            if (state != PackageManager.PERMISSION_GRANTED) {
+                logger.warn("Discord lacks $permission, $resource will fail even if granted")
+            }
         }
     }
 
@@ -264,7 +340,7 @@ internal object EmbeddedActivityHost {
         logger.error("Activity failed to load: $reason", null)
 
         Utils.mainThread.post {
-            if (dialog == null) return@post
+            if (dialog == null) return@post logger.info("Activity already closed, ignoring load failure")
             Utils.showToast("Activity failed to load")
             closeCurrent()
         }
@@ -276,6 +352,7 @@ internal object EmbeddedActivityHost {
         val d = dialog
         val host = hostRef.get()
         val orientation = savedOrientation
+        current?.let { logger.info("Closing activity ${it.applicationId}, instance=${it.rawInstanceId}") }
 
         webView = null
         dialog = null
@@ -289,6 +366,7 @@ internal object EmbeddedActivityHost {
         if (orientation != null && host != null && !host.isDestroyed) {
             try {
                 host.requestedOrientation = orientation
+                logger.info("Restored orientation $orientation")
             } catch (e: Throwable) {
                 logger.error("Failed to restore orientation", e)
             }

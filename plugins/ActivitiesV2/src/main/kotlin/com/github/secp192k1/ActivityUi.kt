@@ -75,7 +75,10 @@ internal object ActivityUi {
             it.typeface = Typeface.DEFAULT_BOLD
             it.background = GradientDrawable().apply { setColor(leave); cornerRadius = 16.dp.toFloat() }
             it.setPadding(16.dp, 8.dp, 16.dp, 8.dp)
-            it.setOnClickListener { dialog.dismiss() }
+            it.setOnClickListener {
+                logger.info("Leave pressed")
+                dialog.dismiss()
+            }
             header.addView(it, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL).apply { marginEnd = 12.dp })
         }
         card.addView(header, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -89,17 +92,21 @@ internal object ActivityUi {
         }
 
         dialog.setOnShowListener {
+            logger.info("Activity dialog shown, screenHeight=$screenHeight")
             dialog.findViewById<View>(R.f.design_bottom_sheet)?.let { sheet ->
                 sheet.setBackgroundColor(bg)
                 sheet.layoutParams = sheet.layoutParams.apply { height = MATCH_PARENT }
-            }
+            } ?: logger.warn("Bottom sheet view not found, activity may not fill the screen")
             card.layoutParams = card.layoutParams.apply { height = MATCH_PARENT }
             dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
 
             val window = dialog.window
+            if (window == null) logger.warn("Activity dialog has no window, dimming disabled")
             window?.attributes?.dimAmount = 1f
             dialog.behavior.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
-                override fun onStateChanged(bottomSheet: View, newState: Int) {}
+                override fun onStateChanged(bottomSheet: View, newState: Int) {
+                    logger.info("Activity sheet state changed to $newState")
+                }
                 override fun onSlide(bottomSheet: View, slideOffset: Float) {
                     window?.attributes = window.attributes?.apply {
                         dimAmount = slideOffset.coerceIn(0f, 1f)
@@ -108,7 +115,10 @@ internal object ActivityUi {
             })
         }
 
-        dialog.setOnDismissListener { onDismiss() }
+        dialog.setOnDismissListener {
+            logger.info("Activity dialog dismissed")
+            onDismiss()
+        }
         return ActivityDialog(dialog, participantsRow)
     }
 
@@ -150,7 +160,7 @@ internal object ActivityUi {
 
         Utils.threadPool.execute {
             try {
-                val bitmap = URL(url).openStream().use(BitmapFactory::decodeStream) ?: return@execute
+                val bitmap = URL(url).openStream().use(BitmapFactory::decodeStream) ?: return@execute logger.warn("Failed to decode avatar of $userId")
                 avatarCache.put(url, bitmap)
                 image.post { setRoundAvatar(image, bitmap) }
             } catch (e: Throwable) {
