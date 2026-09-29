@@ -40,7 +40,6 @@ internal object ActivityUi {
     @SuppressLint("SetTextI18n")
     fun buildDialog(activity: Activity, content: View, onDismiss: () -> Unit): ActivityDialog {
         val bg = ColorCompat.getThemedColor(activity, R.b.colorBackgroundPrimary)
-        val handle = ColorCompat.getThemedColor(activity, R.b.colorBackgroundModifierAccent)
         val leave = ColorCompat.getThemedColor(activity, R.b.colorButtonDangerBackground)
         val white = ContextCompat.getColor(activity, R.c.white)
 
@@ -53,10 +52,6 @@ internal object ActivityUi {
         }
 
         val header = FrameLayout(activity).apply { setPadding(0, 8.dp, 0, 8.dp) }
-        View(activity).also {
-            it.background = GradientDrawable().apply { setColor(handle); cornerRadius = 3.dp.toFloat() }
-            header.addView(it, FrameLayout.LayoutParams(36.dp, 5.dp, Gravity.CENTER_HORIZONTAL).apply { topMargin = 6.dp })
-        }
 
         val participantsRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -88,6 +83,8 @@ internal object ActivityUi {
         dialog.setCancelable(false)
         dialog.behavior.apply {
             isHideable = false
+            // Collapsed, the sheet still blocks the chat behind it and taps outside do nothing, so keep it expanded
+            isDraggable = false
             peekHeight = (screenHeight * 0.15f).toInt()
         }
 
