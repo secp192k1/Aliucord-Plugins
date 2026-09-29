@@ -299,7 +299,7 @@ class ActivitiesV2 : Plugin() {
                 }
             }
 
-            // After the open post so the initial update isn't dropped before the session exists
+            // Must come after the open post, both run in order on the main looper so the initial update isn't dropped
             EmbeddedActivityHost.updateParticipants(instanceId, userIds.mapNotNull { it.toLongOrNull() })
         } catch (e: Throwable) {
             logger.error("Failed to handle $V2", e)

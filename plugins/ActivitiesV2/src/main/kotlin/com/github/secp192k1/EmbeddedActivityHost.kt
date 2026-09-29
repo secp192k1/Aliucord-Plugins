@@ -237,13 +237,13 @@ internal object EmbeddedActivityHost {
     }
 
     fun updateParticipants(instanceId: String, userIds: List<Long>) {
-        if (session?.rawInstanceId != instanceId) return
-
-        logger.info("Participants of instance $instanceId: $userIds")
-        rpc?.updateParticipants(ActivityData.participants(userIds))
+        // Queued behind a pending open() on the same looper, so a just opened session already exists here
         Utils.mainThread.post {
-            val row = participantsRow ?: return@post
-            ActivityUi.updateParticipants(row, userIds)
+            if (session?.rawInstanceId != instanceId) return@post
+
+            logger.info("Participants of instance $instanceId: $userIds")
+            rpc?.updateParticipants(ActivityData.participants(userIds))
+            participantsRow?.let { ActivityUi.updateParticipants(it, userIds) }
         }
     }
 
