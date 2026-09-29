@@ -1,10 +1,21 @@
-version = "1.2.3"
+version = "1.3.0"
 description = "Lets you play activities like Wordle"
 
 aliucord {
     // Changelog of your plugin
     changelog.set(
         """
+        # 1.3.0
+        * Activities that close themselves after an error now close instead of getting stuck
+        * Participant list and header avatars show up as soon as an activity opens
+        * The activity sheet can no longer be dragged into a stuck, collapsed state
+        * Activities open a bit faster
+        * Activities now receive the screen orientation, layout mode and thermal state
+        * Launch messages now render for activities with a renamed launch command
+        * Nothing is sent to an activity anymore after you leave it
+        * More detailed logging to help troubleshoot activities
+        * Sign-in codes and API keys are no longer written to logs
+
         # 1.2.3
         * Fix crashing when opening media picker on older android phones
 
