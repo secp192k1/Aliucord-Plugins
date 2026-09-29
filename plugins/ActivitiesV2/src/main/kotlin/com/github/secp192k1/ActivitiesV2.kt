@@ -256,24 +256,6 @@ class ActivitiesV2 : Plugin() {
                 }
             }
 
-            val users = JSONArray()
-            userIds.forEach { users.put(it) }
-
-            val embeddedActivity = JSONObject()
-                .put("application_id", applicationId)
-                .put("name", ActivityApi.fetchAppName(applicationId) ?: "Unknown Activity")
-
-            val v1 = JSONObject()
-                .put("channel_id", channelId)
-                .put("users", users)
-                .put("embedded_activity", embeddedActivity)
-            if (location.has("guild_id") && !location.isNull("guild_id"))
-                v1.put("guild_id", location.optString("guild_id"))
-
-            val update = InboundGatewayGsonParser.INSTANCE.gatewayGsonInstance
-                .fromJson(v1.toString(), EmbeddedActivityInboundUpdate::class.java)
-            StoreStream.getGatewaySocket().handleDispatch(V1, update)
-
             val instanceId = instance.optString("instance_id")
             val includesMe = userIds.contains(StoreStream.getUsers().me.id.toString())
             logger.info("$V2: app=$applicationId instance=$instanceId channel=$channelId participants=${userIds.size} includesMe=$includesMe")
@@ -301,6 +283,25 @@ class ActivitiesV2 : Plugin() {
 
             // Must come after the open post, both run in order on the main looper so the initial update isn't dropped
             EmbeddedActivityHost.updateParticipants(instanceId, userIds.mapNotNull { it.toLongOrNull() })
+
+            // Last, since resolving an unknown app's name hits the network and shouldn't delay opening
+            val users = JSONArray()
+            userIds.forEach { users.put(it) }
+
+            val embeddedActivity = JSONObject()
+                .put("application_id", applicationId)
+                .put("name", ActivityApi.fetchAppName(applicationId) ?: "Unknown Activity")
+
+            val v1 = JSONObject()
+                .put("channel_id", channelId)
+                .put("users", users)
+                .put("embedded_activity", embeddedActivity)
+            if (location.has("guild_id") && !location.isNull("guild_id"))
+                v1.put("guild_id", location.optString("guild_id"))
+
+            val update = InboundGatewayGsonParser.INSTANCE.gatewayGsonInstance
+                .fromJson(v1.toString(), EmbeddedActivityInboundUpdate::class.java)
+            StoreStream.getGatewaySocket().handleDispatch(V1, update)
         } catch (e: Throwable) {
             logger.error("Failed to handle $V2", e)
         }
