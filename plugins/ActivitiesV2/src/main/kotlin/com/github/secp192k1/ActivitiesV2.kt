@@ -163,15 +163,22 @@ class ActivitiesV2 : Plugin() {
         }
     }
 
-    private fun isLaunchMessage(type: Int?, content: String?, interactionName: String?) =
-        type == MessageTypes.CONTEXT_MENU_COMMAND && content.isNullOrEmpty() && interactionName == "launch"
+    // Entry point launches are type 23 follow-ups without a body. The command is named "launch" by default,
+    // but apps can rename it (Wordle's is "play"), so a bodiless one that carries its application counts too
+    private fun isLaunchMessage(msg: Any, type: Int?, content: String?, interactionName: String?, application: Any?) =
+        type == MessageTypes.CONTEXT_MENU_COMMAND && content.isNullOrEmpty() &&
+            (interactionName == "launch" || (interactionName != null && application != null && !hasBody(msg)))
+
+    private fun hasBody(msg: Any) = listOf("embeds", "components", "attachments").any { !(getField(msg, it) as? List<*>).isNullOrEmpty() }
 
     private fun injectLaunchCard(msg: ApiMessage) {
         try {
             if (!isLaunchMessage(
+                msg,
                 getField(msg, "type") as? Int,
                 getField(msg, "content") as? String,
-                msg.p()?.b()
+                msg.p()?.b(),
+                msg.b(),
             )) return
 
             val channelId = getField(msg, "channelId") as? Long ?: return logger.warn("Launch message without channel id, not rendering card")
@@ -183,7 +190,7 @@ class ActivitiesV2 : Plugin() {
 
     private fun injectLaunchCard(msg: ModelMessage) {
         try {
-            if (!isLaunchMessage(msg.type, msg.content, msg.interaction?.b())) return
+            if (!isLaunchMessage(msg, msg.type, msg.content, msg.interaction?.b(), msg.application)) return
 
             applyLaunchCard(msg, msg.application, msg.channelId)
         } catch (e: Throwable) {
