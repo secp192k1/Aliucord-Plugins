@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 internal class ActivityRpc(
     private val session: ActivitySession,
     private val post: (String) -> Unit,
+    private val onClose: (code: Int, message: String) -> Unit,
 ) {
     private companion object {
         const val PARTICIPANTS_UPDATE = "ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE"
@@ -98,6 +99,14 @@ internal class ActivityRpc(
                         replyError(command, nonce, RpcErrorCode.INVALID_COMMAND.value, "Unknown command: $command")
                     }
                 }
+            }
+            // Sent by the SDK's close(), after which it stops listening to us
+            RpcOpcode.CLOSE -> {
+                val payload = tuple.optJSONObject(1)
+                val code = payload?.optInt("code", -1) ?: -1
+                val message = payload?.optString("message").orEmpty()
+                logger.info("Activity asked to close: code=$code message=$message")
+                onClose(code, message)
             }
             null -> logger.warn("Unknown RPC opcode: ${tuple.optInt(0, -1)} payload=${tuple.opt(1)}")
         }

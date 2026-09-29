@@ -62,7 +62,8 @@ internal enum class ChannelType(val value: Int) {
 // Embedded frame opcodes exchanged with the WebView
 internal enum class RpcOpcode(val value: Int) {
     HANDSHAKE(0),
-    FRAME(1);
+    FRAME(1),
+    CLOSE(2);
 
     companion object {
         fun from(value: Int) = entries.firstOrNull { it.value == value }
@@ -74,6 +75,19 @@ internal enum class RpcErrorCode(val value: Int) {
     INVALID_COMMAND(4002),
     AUTHENTICATE_FAILED(4009),
     AUTHORIZE_FAILED(4011),
+}
+
+// https://github.com/discord/embedded-app-sdk/blob/main/src/Constants.ts
+internal enum class RpcCloseCode(val value: Int) {
+    CLOSE_NORMAL(1000),
+    CLOSE_UNSUPPORTED(1003),
+    CLOSE_ABNORMAL(1006),
+    INVALID_CLIENTID(4000),
+    INVALID_ORIGIN(4001),
+    RATELIMITED(4002),
+    TOKEN_REVOKED(4003),
+    INVALID_VERSION(4004),
+    INVALID_ENCODING(4005),
 }
 
 // Embedded app RPC commands handled by [ActivityRpc]

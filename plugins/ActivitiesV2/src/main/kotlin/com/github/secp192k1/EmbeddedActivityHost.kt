@@ -215,7 +215,11 @@ internal object EmbeddedActivityHost {
             }
         }
 
-        val rpc = ActivityRpc(session) { js -> web.post { web.evaluateJavascript(js, null) } }
+        val rpc = ActivityRpc(
+            session,
+            post = { js -> web.post { web.evaluateJavascript(js, null) } },
+            onClose = { code, message -> Utils.mainThread.post { onActivityClose(session, code, message) } },
+        )
         this.rpc = rpc
 
         web.addJavascriptInterface(object {
@@ -334,6 +338,16 @@ internal object EmbeddedActivityHost {
                 logger.warn("Discord lacks $permission, $resource will fail even if granted")
             }
         }
+    }
+
+    private fun onActivityClose(closing: ActivitySession, code: Int, message: String) {
+        // A late request from a replaced activity must not close its successor
+        if (session !== closing) return logger.info("Ignoring close request from a replaced activity")
+
+        if (code != RpcCloseCode.CLOSE_NORMAL.value || message.isNotBlank()) {
+            Utils.showToast(if (message.isNotBlank()) "Activity closed: $message" else "Activity closed ($code)")
+        }
+        closeCurrent()
     }
 
     private fun onLoadFailed(reason: String) {
