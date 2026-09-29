@@ -1,5 +1,8 @@
 package com.github.secp192k1
 
+import android.content.res.Configuration
+import android.os.Build
+import android.os.PowerManager
 import com.aliucord.Logger
 import com.aliucord.Utils
 import com.discord.stores.StoreStream
@@ -16,6 +19,9 @@ internal class ActivityRpc(
 ) {
     private companion object {
         const val PARTICIPANTS_UPDATE = "ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE"
+        const val ORIENTATION_UPDATE = "ORIENTATION_UPDATE"
+        const val LAYOUT_MODE_UPDATE = "ACTIVITY_LAYOUT_MODE_UPDATE"
+        const val THERMAL_STATE_UPDATE = "THERMAL_STATE_UPDATE"
     }
 
     private val logger = Logger("ActivitiesV2")
@@ -76,6 +82,7 @@ internal class ActivityRpc(
                             logger.info("Replaying last participants to new $PARTICIPANTS_UPDATE subscriber")
                             dispatch(PARTICIPANTS_UPDATE, it)
                         }
+                        if (event != null) currentState(event)?.let { dispatch(event, it) }
                     }
                     RpcCommand.UNSUBSCRIBE -> {
                         event?.let(subscriptions::remove)
@@ -133,6 +140,31 @@ internal class ActivityRpc(
         }
 
         return user
+    }
+
+    // Nothing here ever fires these (orientation is locked while open, layout is always focused,
+    // thermal changes aren't tracked), so subscribers get the current value once
+    private fun currentState(event: String): JSONObject? = when (event) {
+        ORIENTATION_UPDATE -> {
+            val landscape = Utils.appContext.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            JSONObject()
+                .put("screen_orientation", (if (landscape) ScreenOrientation.LANDSCAPE else ScreenOrientation.PORTRAIT).value)
+                .put("orientation", if (landscape) "landscape" else "portrait")
+        }
+        LAYOUT_MODE_UPDATE -> JSONObject().put("layout_mode", LayoutMode.FOCUSED.value)
+        THERMAL_STATE_UPDATE -> JSONObject().put("thermal_state", thermalState().value)
+        else -> null
+    }
+
+    private fun thermalState(): ThermalState {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ThermalState.NOMINAL
+        val power = Utils.appContext.getSystemService(PowerManager::class.java) ?: return ThermalState.NOMINAL
+        return when (power.currentThermalStatus) {
+            PowerManager.THERMAL_STATUS_NONE -> ThermalState.NOMINAL
+            PowerManager.THERMAL_STATUS_LIGHT -> ThermalState.FAIR
+            PowerManager.THERMAL_STATUS_MODERATE -> ThermalState.SERIOUS
+            else -> ThermalState.CRITICAL
+        }
     }
 
     fun updateParticipants(data: JSONObject) {

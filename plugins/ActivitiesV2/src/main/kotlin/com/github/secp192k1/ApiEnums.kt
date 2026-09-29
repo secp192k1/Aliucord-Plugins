@@ -90,6 +90,27 @@ internal enum class RpcCloseCode(val value: Int) {
     INVALID_ENCODING(4005),
 }
 
+// https://github.com/discord/embedded-app-sdk/blob/main/src/schema/common.ts
+internal enum class ScreenOrientation(val value: Int) {
+    PORTRAIT(0),
+    LANDSCAPE(1),
+}
+
+// https://github.com/discord/embedded-app-sdk/blob/main/src/schema/common.ts
+internal enum class LayoutMode(val value: Int) {
+    FOCUSED(0),
+    PIP(1),
+    GRID(2),
+}
+
+// https://github.com/discord/embedded-app-sdk/blob/main/src/schema/common.ts
+internal enum class ThermalState(val value: Int) {
+    NOMINAL(0),
+    FAIR(1),
+    SERIOUS(2),
+    CRITICAL(3),
+}
+
 // Embedded app RPC commands handled by [ActivityRpc]
 internal enum class RpcCommand {
     AUTHORIZE,
