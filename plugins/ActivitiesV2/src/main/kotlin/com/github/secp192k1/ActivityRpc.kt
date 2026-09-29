@@ -22,8 +22,15 @@ internal class ActivityRpc(
     private val subscriptions: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap())
     @Volatile private var clientId = ""
     @Volatile private var lastParticipants: JSONObject? = null
+    @Volatile private var closed = false
+
+    // The WebView is gone, replies still in flight (e.g. AUTHORIZE) have nowhere to go
+    fun close() {
+        closed = true
+    }
 
     fun handle(json: String) {
+        if (closed) return logger.info("Ignoring RPC frame received after close")
         val tuple = JSONArray(json)
 
         when (RpcOpcode.from(tuple.optInt(0, -1))) {
@@ -147,7 +154,10 @@ internal class ActivityRpc(
         is ApiResult.ERROR -> replyError(cmd, nonce, result.code, result.message)
     }
 
-    private fun deliver(tuple: JSONArray) = post("window.__hostDeliver(${JSONObject.quote(tuple.toString())})")
+    private fun deliver(tuple: JSONArray) {
+        if (closed) return logger.info("Dropping RPC ${tuple.optJSONObject(1)?.optString("cmd")} after close")
+        post("window.__hostDeliver(${JSONObject.quote(tuple.toString())})")
+    }
 
     private fun frame(payload: JSONObject) = deliver(JSONArray().put(RpcOpcode.FRAME.value).put(payload))
 

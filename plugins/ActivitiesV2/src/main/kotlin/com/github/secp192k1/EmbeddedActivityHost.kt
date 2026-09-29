@@ -372,6 +372,7 @@ internal object EmbeddedActivityHost {
         dialog = null
         participantsRow = null
         session = null
+        rpc?.close()
         rpc = null
         hostRef = WeakReference(null)
         savedOrientation = null
