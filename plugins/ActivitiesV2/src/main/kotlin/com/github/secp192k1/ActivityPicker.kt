@@ -1,11 +1,14 @@
 package com.github.secp192k1
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.os.Bundle
 import android.util.LruCache
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -13,7 +16,10 @@ import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
+import androidx.appcompat.widget.AppCompatImageButton
+import androidx.core.content.ContextCompat
 import com.aliucord.Http
 import com.aliucord.Logger
 import com.aliucord.Utils
@@ -40,6 +46,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
 import com.lytefast.flexinput.R
 import com.lytefast.flexinput.fragment.FlexInputFragment
+import com.lytefast.flexinput.fragment.`FlexInputFragment$d`
 import de.robv.android.xposed.XC_MethodHook
 import org.json.JSONObject
 import java.net.URL
@@ -53,6 +60,7 @@ internal object ActivityPicker {
     private val entriesCache = ConcurrentHashMap<Long, CachedEntries>()
 
     private const val TAB_TAG = "activities"
+    private const val CHAT_BUTTON_TAG = "activitiesv2_button"
     private const val CACHE_TTL_MS = 5 * 60_000L
 
     private class ActivityEntry(val id: String, val name: String, val icon: String?)
@@ -154,6 +162,64 @@ internal object ActivityPicker {
         ) { _ ->
             replaceComingSoonText(binding.a)
         }
+
+        patchChatButton(patcher)
+    }
+
+    // Shortcut button right of the attachments button, like the old chat bar
+    private fun patchChatButton(patcher: PatcherAPI) {
+        patcher.after<FlexInputFragment>(
+            "onViewCreated",
+            View::class.java,
+            Bundle::class.java
+        ) { (_, view: View) ->
+            try {
+                addChatButton(this, view)
+            } catch (e: Throwable) {
+                logger.error("Failed to add activities button to chat bar", e)
+            }
+        }
+
+        // configureUI, hides the attachments and gift buttons while typing
+        patcher.after<`FlexInputFragment$d`>("invoke", Any::class.java) {
+            val root = (receiver as? FlexInputFragment)?.view ?: return@after
+            val gallery = root.findViewById<View>(R.f.gallery_btn) ?: return@after
+            val button = (gallery.parent as? ViewGroup)?.findViewWithTag<View>(CHAT_BUTTON_TAG) ?: return@after
+
+            button.visibility = if (Config.chatButton) gallery.visibility else View.GONE
+        }
+    }
+
+    private fun addChatButton(fragment: FlexInputFragment, root: View) {
+        val gallery = root.findViewById<View>(R.f.gallery_btn) ?: return logger.warn("No attachments button, not adding activities button")
+        val container = gallery.parent as? ViewGroup ?: return logger.warn("Attachments button has no parent, not adding activities button")
+        if (container.findViewWithTag<View>(CHAT_BUTTON_TAG) != null) return
+
+        val ctx = container.context
+        val button = AppCompatImageButton(ctx).apply {
+            tag = CHAT_BUTTON_TAG
+            contentDescription = ctx.getString(R.h.activity)
+            background = ContextCompat.getDrawable(ctx, R.e.drawable_circle_black)?.mutate()?.apply {
+                setTint(ColorCompat.getThemedColor(ctx, R.b.colorBackgroundSecondaryAlt))
+            }
+            setImageResource(R.e.ic_controller_24dp)
+            setColorFilter(ColorCompat.getThemedColor(ctx, R.b.colorInteractiveNormal))
+            setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+            visibility = if (Config.chatButton) gallery.visibility else View.GONE
+            setOnClickListener {
+                (ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.hideSoftInputFromWindow(windowToken, 0)
+                openPicker()
+            }
+            setOnLongClickListener { fragment.s?.onToolTipButtonLongPressed(it) ?: false }
+        }
+
+        container.addView(
+            button,
+            container.indexOfChild(gallery) + 1,
+            LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = 8.dp }
+        )
+
+        logger.info("Added activities button to chat message bar")
     }
 
     private fun replaceComingSoonText(root: ViewGroup) {

@@ -85,7 +85,7 @@ class ActivitiesV2 : Plugin() {
 
     override fun start(context: Context) {
         logger.info("Starting v${manifest.version} on Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})")
-        logger.info("Settings: promptForPermissions=${Config.promptForPermissions} webContentsDebugging=${Config.webContentsDebugging}")
+        logger.info("Settings: promptForPermissions=${Config.promptForPermissions} webContentsDebugging=${Config.webContentsDebugging} chatButton=${Config.chatButton}")
         EmbeddedActivityHost.preload(context)
         ActivityPicker.patch(patcher)
         ActivityApi.trackInteractionEvents()

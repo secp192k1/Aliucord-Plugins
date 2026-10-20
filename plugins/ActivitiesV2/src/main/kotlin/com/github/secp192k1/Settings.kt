@@ -19,6 +19,21 @@ internal class Settings(private val settings: SettingsAPI) : BottomSheet() {
             Utils.createCheckedSetting(
                 ctx,
                 CheckedSetting.ViewType.SWITCH,
+                "Show button in chat message bar",
+                "Show an activities button next to the attachments button in the chat message bar",
+            ).apply {
+                isChecked = settings.getBool(Config.KEY_CHAT_BUTTON, false)
+                setOnCheckedListener {
+                    logger.info("Setting ${Config.KEY_CHAT_BUTTON}=$it")
+                    settings.setBool(Config.KEY_CHAT_BUTTON, it)
+                }
+            },
+        )
+
+        addView(
+            Utils.createCheckedSetting(
+                ctx,
+                CheckedSetting.ViewType.SWITCH,
                 "Prompt before granting permissions",
                 "Ask before letting an activity use the microphone or camera, instead of granting silently",
             ).apply {
